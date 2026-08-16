@@ -1,0 +1,718 @@
+/*
+ * Ganttor chart styles.
+ *
+ * Dark-first, but every colour is defined once as a token on `.gantt` and redefined
+ * under the light theme, so no rule ever hard-codes a colour. The register is a dense
+ * instrument: 28px rows, hairline grid, tabular figures on every number, and saturated
+ * hue spent only where it carries meaning — status, priority, and the critical path.
+ *
+ * Theming: the host sets `data-gantt-theme="light" | "dark"`, or leaves it off to
+ * follow `prefers-color-scheme`.
+ */
+
+.gantt {
+  /* ── Surfaces ───────────────────────────────────────────────────────────────── */
+  --gantt-bg: #0e1014;
+  --gantt-surface: #14171d;
+  --gantt-surface-raised: #191d25;
+  --gantt-surface-hover: #1e232c;
+  --gantt-surface-selected: #1c2534;
+
+  /* ── Lines. Hairlines carry the grid; borders separate panes. ───────────────── */
+  --gantt-hairline: #1f242d;
+  --gantt-hairline-strong: #2a313c;
+  --gantt-border: #2a313c;
+
+  /* ── Text ───────────────────────────────────────────────────────────────────── */
+  --gantt-text: #e6e9ef;
+  --gantt-text-muted: #9aa4b4;
+  --gantt-text-faint: #667080;
+  --gantt-text-on-accent: #0b0d11;
+
+  /* ── Accents ────────────────────────────────────────────────────────────────── */
+  --gantt-accent: #5b8cff;
+  --gantt-today: #ff8a5b;
+  --gantt-critical: #ff5f57;
+  --gantt-focus: #7aa2ff;
+
+  /* ── Status. The default colour dimension. ──────────────────────────────────── */
+  --gantt-status-not-started: #6b7686;
+  --gantt-status-on-track: #3fb589;
+  --gantt-status-at-risk: #e0a33c;
+  --gantt-status-delayed: #e0574f;
+  --gantt-status-done: #4a7fd4;
+
+  /* ── Priority ───────────────────────────────────────────────────────────────── */
+  --gantt-priority-highest: #e0574f;
+  --gantt-priority-high: #e08a3c;
+  --gantt-priority-medium: #4a7fd4;
+  --gantt-priority-low: #5aa588;
+  --gantt-priority-lowest: #6b7686;
+
+  /* ── Categorical ramp for assignees and phases ──────────────────────────────── */
+  --gantt-cat-1: #5b8cff;
+  --gantt-cat-2: #3fb589;
+  --gantt-cat-3: #d97fb8;
+  --gantt-cat-4: #e0a33c;
+  --gantt-cat-5: #8b7fe8;
+  --gantt-cat-6: #47a8c4;
+  --gantt-cat-7: #d4795e;
+  --gantt-cat-8: #7aad4e;
+  --gantt-unassigned: #4a5361;
+
+  /* ── Non-working time and baselines ─────────────────────────────────────────── */
+  --gantt-nonworking: #0a0c10;
+  --gantt-baseline: #58637a;
+  --gantt-progress-veil: rgba(0, 0, 0, 0.42);
+  --gantt-bar-edge: rgba(0, 0, 0, 0.35);
+  --gantt-summary: #7f8b9e;
+
+  /* ── Metrics. Mirrors DEFAULT_METRICS in geometry.ts. ───────────────────────── */
+  --gantt-row-h: 28px;
+  --gantt-header-h: 46px;
+  --gantt-bar-h: 16px;
+
+  --gantt-font: ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --gantt-font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+
+  color: var(--gantt-text);
+  background: var(--gantt-bg);
+  font-family: var(--gantt-font);
+  font-size: 12px;
+  line-height: 1.35;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  /* Every number in the chart is a measurement; they must align in columns. */
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-color-scheme: light) {
+  .gantt:not([data-gantt-theme='dark']) {
+    --gantt-bg: #ffffff;
+    --gantt-surface: #f7f8fa;
+    --gantt-surface-raised: #ffffff;
+    --gantt-surface-hover: #eef1f5;
+    --gantt-surface-selected: #e4edfb;
+
+    --gantt-hairline: #e8ebf0;
+    --gantt-hairline-strong: #d3d8e0;
+    --gantt-border: #d3d8e0;
+
+    --gantt-text: #12161c;
+    --gantt-text-muted: #5a6472;
+    --gantt-text-faint: #8b95a4;
+    --gantt-text-on-accent: #ffffff;
+
+    --gantt-accent: #2f6bdb;
+    --gantt-today: #e2622b;
+    --gantt-critical: #d93a30;
+    --gantt-focus: #2f6bdb;
+
+    --gantt-status-not-started: #8b95a4;
+    --gantt-status-on-track: #1d9268;
+    --gantt-status-at-risk: #b47a12;
+    --gantt-status-delayed: #cc3f36;
+    --gantt-status-done: #2f6bdb;
+
+    --gantt-priority-highest: #cc3f36;
+    --gantt-priority-high: #c26a19;
+    --gantt-priority-medium: #2f6bdb;
+    --gantt-priority-low: #1d9268;
+    --gantt-priority-lowest: #8b95a4;
+
+    --gantt-cat-1: #2f6bdb;
+    --gantt-cat-2: #1d9268;
+    --gantt-cat-3: #b8478f;
+    --gantt-cat-4: #b47a12;
+    --gantt-cat-5: #6b5cd4;
+    --gantt-cat-6: #17809e;
+    --gantt-cat-7: #c2543a;
+    --gantt-cat-8: #5c8c2f;
+    --gantt-unassigned: #a7b0bd;
+
+    --gantt-nonworking: #f1f3f6;
+    --gantt-baseline: #a7b0bd;
+    --gantt-progress-veil: rgba(255, 255, 255, 0.5);
+    --gantt-bar-edge: rgba(0, 0, 0, 0.12);
+    --gantt-summary: #5a6472;
+  }
+}
+
+.gantt[data-gantt-theme='light'] {
+  --gantt-bg: #ffffff;
+  --gantt-surface: #f7f8fa;
+  --gantt-surface-raised: #ffffff;
+  --gantt-surface-hover: #eef1f5;
+  --gantt-surface-selected: #e4edfb;
+
+  --gantt-hairline: #e8ebf0;
+  --gantt-hairline-strong: #d3d8e0;
+  --gantt-border: #d3d8e0;
+
+  --gantt-text: #12161c;
+  --gantt-text-muted: #5a6472;
+  --gantt-text-faint: #8b95a4;
+  --gantt-text-on-accent: #ffffff;
+
+  --gantt-accent: #2f6bdb;
+  --gantt-today: #e2622b;
+  --gantt-critical: #d93a30;
+  --gantt-focus: #2f6bdb;
+
+  --gantt-status-not-started: #8b95a4;
+  --gantt-status-on-track: #1d9268;
+  --gantt-status-at-risk: #b47a12;
+  --gantt-status-delayed: #cc3f36;
+  --gantt-status-done: #2f6bdb;
+
+  --gantt-priority-highest: #cc3f36;
+  --gantt-priority-high: #c26a19;
+  --gantt-priority-medium: #2f6bdb;
+  --gantt-priority-low: #1d9268;
+  --gantt-priority-lowest: #8b95a4;
+
+  --gantt-cat-1: #2f6bdb;
+  --gantt-cat-2: #1d9268;
+  --gantt-cat-3: #b8478f;
+  --gantt-cat-4: #b47a12;
+  --gantt-cat-5: #6b5cd4;
+  --gantt-cat-6: #17809e;
+  --gantt-cat-7: #c2543a;
+  --gantt-cat-8: #5c8c2f;
+  --gantt-unassigned: #a7b0bd;
+
+  --gantt-nonworking: #f1f3f6;
+  --gantt-baseline: #a7b0bd;
+  --gantt-progress-veil: rgba(255, 255, 255, 0.5);
+  --gantt-bar-edge: rgba(0, 0, 0, 0.12);
+  --gantt-summary: #5a6472;
+}
+
+.gantt *,
+.gantt *::before,
+.gantt *::after {
+  box-sizing: border-box;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+ * Layout
+ *
+ * One scroll container holds both panes. The grid is `position: sticky` inside it
+ * rather than a separate scroller, so the rows cannot desynchronise from the bars —
+ * there is no scroll event to mirror and nothing to fall out of step.
+ * ───────────────────────────────────────────────────────────────────────────────── */
+
+.gantt__scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior-x: contain;
+}
+
+.gantt__layout {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  align-items: start;
+  min-width: min-content;
+}
+
+/* ── Left pane: the WBS grid ───────────────────────────────────────────────────── */
+
+.gantt__grid {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--gantt-surface);
+  border-right: 1px solid var(--gantt-border);
+}
+
+.gantt__grid-head,
+.gantt__timeline-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: var(--gantt-header-h);
+  background: var(--gantt-surface);
+  border-bottom: 1px solid var(--gantt-border);
+}
+
+.gantt__grid-head {
+  z-index: 4;
+  display: flex;
+  align-items: flex-end;
+}
+
+.gantt__grid-row,
+.gantt__grid-head-row {
+  display: grid;
+  grid-template-columns:
+    var(--gantt-col-name, 260px) 46px 78px 78px 40px 44px;
+  align-items: center;
+  height: var(--gantt-row-h);
+}
+
+.gantt__grid-head-row {
+  height: 26px;
+  color: var(--gantt-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.gantt__grid-row {
+  border-bottom: 1px solid var(--gantt-hairline);
+  cursor: default;
+}
+
+.gantt__grid-row:hover {
+  background: var(--gantt-surface-hover);
+}
+
+.gantt__grid-row[data-selected='true'] {
+  background: var(--gantt-surface-selected);
+}
+
+.gantt__cell {
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gantt__cell--num {
+  font-family: var(--gantt-font-mono);
+  font-size: 11px;
+  color: var(--gantt-text-muted);
+  text-align: right;
+}
+
+.gantt__cell--date {
+  font-family: var(--gantt-font-mono);
+  font-size: 11px;
+  color: var(--gantt-text-muted);
+}
+
+.gantt__cell--name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gantt__name-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gantt__grid-row[data-kind='summary'] .gantt__name-text {
+  font-weight: 600;
+  color: var(--gantt-text);
+}
+
+.gantt__grid-row[data-kind='milestone'] .gantt__name-text {
+  color: var(--gantt-text);
+}
+
+.gantt__key {
+  flex: none;
+  font-family: var(--gantt-font-mono);
+  font-size: 10px;
+  color: var(--gantt-text-faint);
+}
+
+.gantt__expander {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--gantt-text-muted);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.gantt__expander:hover {
+  background: var(--gantt-surface-raised);
+  color: var(--gantt-text);
+}
+
+.gantt__expander-spacer {
+  flex: none;
+  width: 14px;
+}
+
+.gantt__avatars {
+  display: flex;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+.gantt__avatar {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--gantt-text-on-accent);
+}
+
+/* ── Right pane: the timeline ──────────────────────────────────────────────────── */
+
+.gantt__timeline {
+  position: relative;
+  min-width: 0;
+}
+
+.gantt__timeline-head {
+  background: var(--gantt-surface);
+}
+
+.gantt__tickrow {
+  position: relative;
+  height: 23px;
+}
+
+.gantt__tickrow--major {
+  border-bottom: 1px solid var(--gantt-hairline);
+}
+
+.gantt__tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+  border-left: 1px solid var(--gantt-hairline);
+  color: var(--gantt-text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.gantt__tickrow--major .gantt__tick {
+  border-left-color: var(--gantt-hairline-strong);
+  color: var(--gantt-text);
+  font-weight: 600;
+}
+
+.gantt__tick--narrow {
+  justify-content: center;
+  padding-left: 0;
+  font-size: 9px;
+}
+
+.gantt__tick[data-nonworking='true'] {
+  color: var(--gantt-text-faint);
+}
+
+.gantt__canvas {
+  position: relative;
+}
+
+/* Background layer: non-working shading and the vertical grid. */
+
+.gantt__col {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid transparent;
+}
+
+.gantt__col[data-nonworking='true'] {
+  background: var(--gantt-nonworking);
+}
+
+.gantt__col[data-week-start='true'] {
+  border-left-color: var(--gantt-hairline);
+}
+
+.gantt__col[data-month-start='true'] {
+  border-left-color: var(--gantt-hairline-strong);
+}
+
+.gantt__rowline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--gantt-row-h);
+  border-bottom: 1px solid var(--gantt-hairline);
+}
+
+.gantt__rowline[data-selected='true'] {
+  background: var(--gantt-surface-selected);
+}
+
+.gantt__rowline:hover {
+  background: var(--gantt-surface-hover);
+}
+
+/* ── Today marker ──────────────────────────────────────────────────────────────── */
+
+.gantt__today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid var(--gantt-today);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.gantt__today-flag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(-1px);
+  padding: 1px 4px;
+  border-radius: 0 0 3px 0;
+  background: var(--gantt-today);
+  color: var(--gantt-text-on-accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ── Bars ──────────────────────────────────────────────────────────────────────── */
+
+.gantt__bars {
+  position: absolute;
+  inset: 0;
+}
+
+.gantt__bar {
+  position: absolute;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--gantt-bar-edge);
+  cursor: grab;
+  overflow: hidden;
+}
+
+.gantt__bar[data-dragging='true'] {
+  cursor: grabbing;
+  opacity: 0.75;
+}
+
+.gantt__bar[data-locked='true'] {
+  cursor: default;
+}
+
+.gantt__bar[data-critical='true'] {
+  box-shadow:
+    inset 0 0 0 1px var(--gantt-critical),
+    0 0 0 1px var(--gantt-critical);
+}
+
+.gantt__bar[data-selected='true'] {
+  outline: 2px solid var(--gantt-focus);
+  outline-offset: 1px;
+}
+
+.gantt__bar:focus-visible {
+  outline: 2px solid var(--gantt-focus);
+  outline-offset: 1px;
+}
+
+/*
+ * The progress fill. The *unfinished* remainder is veiled rather than the completed
+ * part being tinted, so the bar keeps its colour-by hue at full saturation and the
+ * fill boundary lands at exactly percent × width.
+ */
+.gantt__bar-remaining {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--gantt-progress-veil);
+  pointer-events: none;
+}
+
+.gantt__bar-label {
+  position: absolute;
+  height: var(--gantt-row-h);
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.gantt__bar-label[data-placement='inside'] {
+  color: var(--gantt-text-on-accent);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt__bar-label[data-placement='after'],
+.gantt__bar-label[data-placement='before'] {
+  color: var(--gantt-text-muted);
+}
+
+/* Resize handles, revealed on hover so they never add visual noise at rest. */
+.gantt__handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  opacity: 0;
+}
+
+.gantt__handle--start {
+  left: 0;
+}
+
+.gantt__handle--end {
+  right: 0;
+}
+
+.gantt__bar:hover .gantt__handle {
+  opacity: 1;
+  background: var(--gantt-bar-edge);
+}
+
+/* The link handle: drag from here to another bar to create a dependency. */
+.gantt__linkdot {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-top: -4.5px;
+  border: 1.5px solid var(--gantt-accent);
+  border-radius: 50%;
+  background: var(--gantt-bg);
+  cursor: crosshair;
+  opacity: 0;
+  z-index: 4;
+}
+
+.gantt__bar:hover + .gantt__linkdot,
+.gantt__linkdot:hover,
+.gantt__linkdot[data-active='true'] {
+  opacity: 1;
+}
+
+/* ── Milestones ────────────────────────────────────────────────────────────────── */
+
+.gantt__milestone {
+  cursor: grab;
+}
+
+.gantt__milestone[data-critical='true'] .gantt__milestone-shape {
+  stroke: var(--gantt-critical);
+  stroke-width: 1.5;
+}
+
+.gantt__milestone[data-selected='true'] .gantt__milestone-shape {
+  stroke: var(--gantt-focus);
+  stroke-width: 2;
+}
+
+/* ── Summary bars: a bracket, not a block, so they read as containers ──────────── */
+
+.gantt__summary-bar {
+  position: absolute;
+  height: 7px;
+  background: var(--gantt-summary);
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% 100%,
+    calc(100% - 6px) 40%,
+    6px 40%,
+    0 100%
+  );
+}
+
+/* ── Baseline ghost bars ───────────────────────────────────────────────────────── */
+
+.gantt__baseline {
+  position: absolute;
+  border-radius: 2px;
+  background: var(--gantt-baseline);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ── Dependency arrows ─────────────────────────────────────────────────────────── */
+
+.gantt__arrows {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.gantt__arrow {
+  fill: none;
+  stroke: var(--gantt-text-faint);
+  stroke-width: 1;
+}
+
+.gantt__arrow-head {
+  fill: var(--gantt-text-faint);
+  stroke: none;
+}
+
+.gantt__arrow[data-critical='true'] {
+  stroke: var(--gantt-critical);
+  stroke-width: 1.75;
+}
+
+.gantt__arrow-head[data-critical='true'] {
+  fill: var(--gantt-critical);
+}
+
+.gantt__arrow[data-cyclic='true'],
+.gantt__arrow-head[data-cyclic='true'] {
+  stroke: var(--gantt-critical);
+  fill: var(--gantt-critical);
+  stroke-dasharray: 3 2;
+}
+
+.gantt__arrow[data-selected='true'] {
+  stroke: var(--gantt-focus);
+  stroke-width: 2;
+}
+
+/* Wide transparent stroke over each arrow so a 1px line is still clickable. */
+.gantt__arrow-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 9;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/* The rubber-band line drawn while dragging out a new dependency. */
+.gantt__linkdraft {
+  stroke: var(--gantt-accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  fill: none;
+}
+
+/* ── Empty state ───────────────────────────────────────────────────────────────── */
+
+.gantt__empty {
+  display: grid;
+  place-items: center;
+  padding: 48px 24px;
+  color: var(--gantt-text-faint);
+}
