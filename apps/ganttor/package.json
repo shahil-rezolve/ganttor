@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ganttor/gantt": "workspace:*",
+    "@supabase/supabase-js": "^2.112.3",
     "idb": "^8.0.1",
     "papaparse": "^5.4.1",
     "react": "^19.0.0",

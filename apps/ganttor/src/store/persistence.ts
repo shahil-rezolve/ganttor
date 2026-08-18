@@ -1,14 +1,20 @@
 /**
- * Persistence: IndexedDB for autosave, a JSON file for sharing.
+ * Persistence: the document format, and the local IndexedDB store behind it.
  *
- * There is no server, so the project document *is* the database. Two things follow:
+ * The project document *is* the unit of storage — Supabase keeps one JSONB blob per row
+ * and IndexedDB keeps one value per key — so two things follow either way:
  *
  * 1. **A version stamp on every saved document.** A schema change must be able to read
  *    yesterday's autosave rather than throw away the user's work, so the loader routes
  *    through `migrate()`.
- * 2. **Validation on load, not trust.** A hand-edited `.ganttor.json` or a stale
- *    autosave can be malformed, and the failure mode has to be a clear message rather
- *    than a chart that renders half a project.
+ * 2. **Validation on load, not trust.** A hand-edited `.ganttor.json`, a stale autosave,
+ *    or a row written by an older build can be malformed, and the failure mode has to be
+ *    a clear message rather than a chart that renders half a project.
+ *
+ * `parseDocument` is therefore shared by both backends: rows coming out of Postgres get
+ * exactly the same validation and migration as bytes coming out of IndexedDB.
+ *
+ * This module is the *local* half. `projectRepository.ts` chooses between it and Supabase.
  */
 
 import { openDB, type IDBPDatabase } from 'idb';
@@ -17,7 +23,9 @@ import { DEFAULT_CALENDAR, DEFAULT_SETTINGS, type Project } from '@ganttor/gantt
 
 const DB_NAME = 'ganttor';
 const STORE = 'projects';
-const DB_VERSION = 1;
+/** Keyed by project id — the local mirror of the Supabase `projects` table. */
+const DOCUMENTS_STORE = 'documents';
+const DB_VERSION = 2;
 
 /** Bumped when the persisted shape changes. `migrate()` handles older values. */
 export const DOCUMENT_VERSION = 1;
@@ -30,16 +38,30 @@ export interface StoredDocument {
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
-function db(): Promise<IDBPDatabase> {
+/**
+ * The shared connection.
+ *
+ * `upgrade` creates whatever is missing rather than branching on the old version number,
+ * because a browser can arrive here from either version 1 (autosave only) or from
+ * nothing at all, and "create if absent" covers both without a version ladder.
+ */
+export function localDb(): Promise<IDBPDatabase> {
   dbPromise ??= openDB(DB_NAME, DB_VERSION, {
     upgrade(database) {
       if (!database.objectStoreNames.contains(STORE)) {
         database.createObjectStore(STORE);
       }
+      if (!database.objectStoreNames.contains(DOCUMENTS_STORE)) {
+        database.createObjectStore(DOCUMENTS_STORE);
+      }
     },
   });
   return dbPromise;
 }
+
+const db = localDb;
+
+export const LOCAL_DOCUMENTS_STORE = DOCUMENTS_STORE;
 
 const ACTIVE_KEY = 'active';
 

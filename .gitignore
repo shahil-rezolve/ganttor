@@ -6,3 +6,9 @@ coverage/
 .DS_Store
 test-results/
 playwright-report/
+graphify-out/
+
+# Supabase credentials. `.env.example` is the template that IS committed.
+.env
+.env.local
+.env.*.local

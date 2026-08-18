@@ -7,7 +7,8 @@
 
 import { SCALE_LABELS, SCALE_UNITS, type ColorBy, type ScaleUnit } from '@ganttor/gantt';
 
-import { useProjectStore } from '../store/useProjectStore.js';
+import { useAuthStore } from '../store/useAuthStore.js';
+import { flushAutosave, useProjectStore } from '../store/useProjectStore.js';
 
 const COLOR_BY_OPTIONS: { value: ColorBy; label: string }[] = [
   { value: 'status', label: 'Status' },
@@ -42,13 +43,26 @@ export function Toolbar({ onImport, onSettings, panel, onPanelChange }: ToolbarP
   const past = useProjectStore((s) => s.past.length);
   const future = useProjectStore((s) => s.future.length);
 
+  const projects = useProjectStore((s) => s.projects);
+  const projectId = useProjectStore((s) => s.projectId);
+  const backend = useProjectStore((s) => s.backend);
+  const switchProject = useProjectStore((s) => s.switchProject);
+  const createNewProject = useProjectStore((s) => s.createNewProject);
+  const deleteProject = useProjectStore((s) => s.deleteProject);
+
+  const authEmail = useAuthStore((s) => s.email);
+  const signOut = useAuthStore((s) => s.signOut);
+
   const { locked, showCriticalPath, colorBy } = project.settings;
 
   return (
     <div className="ganttor-bar">
       <div className="ganttor-brand">
         <span className="ganttor-brand__mark">Ganttor</span>
-        <span className="ganttor-brand__meta">{savedLabel(lastSavedAt)}</span>
+        <span className="ganttor-brand__meta">
+          {savedLabel(lastSavedAt)}
+          {backend === 'local' && ' · this browser only'}
+        </span>
       </div>
 
       <input
@@ -57,6 +71,52 @@ export function Toolbar({ onImport, onSettings, panel, onPanelChange }: ToolbarP
         aria-label="Project name"
         onChange={(event) => renameProject(event.target.value)}
       />
+
+      <div className="ganttor-picker">
+        <select
+          className="ganttor-select ganttor-picker__select"
+          aria-label="Open project"
+          // An unsaved project has no row yet, so it is not in the list — show the
+          // placeholder rather than silently displaying some other project's name.
+          value={projectId ?? ''}
+          onChange={(event) => {
+            if (event.target.value) void switchProject(event.target.value);
+          }}
+        >
+          {!projectId && <option value="">Unsaved project</option>}
+          {projects.map((summary) => (
+            <option key={summary.id} value={summary.id}>
+              {summary.name}
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          className="ganttor-btn ganttor-btn--ghost"
+          onClick={createNewProject}
+          title="Start a new, empty project"
+        >
+          + Project
+        </button>
+
+        <button
+          type="button"
+          className="ganttor-btn ganttor-btn--ghost"
+          disabled={!projectId}
+          title="Delete the open project"
+          onClick={() => {
+            if (!projectId) return;
+            // Deleting a project is not undoable — the undo stack is per-document.
+            const ok = window.confirm(
+              `Delete “${project.name}”? This cannot be undone.`,
+            );
+            if (ok) void deleteProject(projectId);
+          }}
+        >
+          Delete
+        </button>
+      </div>
 
       <div className="ganttor-seg" role="group" aria-label="Time scale">
         {SCALE_UNITS.map((value: ScaleUnit) => (
@@ -167,6 +227,19 @@ export function Toolbar({ onImport, onSettings, panel, onPanelChange }: ToolbarP
       <button type="button" className="ganttor-btn ganttor-btn--primary" onClick={onImport}>
         Import Jira CSV
       </button>
+
+      {authEmail && (
+        <button
+          type="button"
+          className="ganttor-btn ganttor-btn--ghost"
+          // Autosave is debounced, so an edit made in the last moment exists only in
+          // memory. Write it before dropping the session that authorises the write.
+          onClick={() => void flushAutosave().then(signOut)}
+          title={`Signed in as ${authEmail}`}
+        >
+          Sign out
+        </button>
+      )}
     </div>
   );
 }
