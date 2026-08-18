@@ -18,15 +18,62 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { compileCalendar, schedule, toISO } from '@ganttor/gantt';
 
 import { App } from './App.js';
-import { clearProject, loadProject } from './store/persistence.js';
-import { useProjectStore } from './store/useProjectStore.js';
+import { clearProject } from './store/persistence.js';
+import {
+  deleteProjectById,
+  listProjects,
+  loadProjectById,
+} from './store/projectRepository.js';
+import { useAuthStore } from './store/useAuthStore.js';
+import { flushAutosave, useProjectStore } from './store/useProjectStore.js';
 
-/** Reset the store between tests, since it is a module-level singleton. */
+/**
+ * The stored project, whichever row autosave last wrote.
+ *
+ * The repository picks its backend at call time; with no Supabase credentials — which is
+ * the case under vitest — that is the IndexedDB path, so this exercises the same code the
+ * app runs, not a test-only shim.
+ */
+async function loadStoredProject() {
+  const [latest] = await listProjects();
+  return latest ? await loadProjectById(latest.id) : null;
+}
+
+/**
+ * Reset the store between tests, since it is a module-level singleton.
+ *
+ * Every saved row has to go, not just the open one: projects now accumulate, and a
+ * leftover row would be picked up by the next test's `hydrate()` in place of the sample.
+ */
 async function resetApp() {
+  // Land any debounced write before wiping, so it cannot resurrect a row afterwards —
+  // or update the store once the test that queued it has finished. Inside `act` because
+  // the write reports back into the store, which re-renders a still-mounted toolbar.
+  await act(async () => {
+    await flushAutosave();
+  });
   await clearProject();
+  for (const summary of await listProjects()) {
+    await deleteProjectById(summary.id);
+  }
+  act(() => {
+    // Settle the auth gate up front. With no Supabase credentials `initialize()` reaches
+    // the same state anyway; doing it synchronously keeps every render(<App />) below
+    // from starting with an async state update React would flag as outside act().
+    useAuthStore.setState({
+      status: 'signed-in',
+      userId: 'local',
+      email: null,
+      configured: false,
+      error: null,
+      busy: false,
+    });
+  });
   act(() => {
     useProjectStore.getState().resetToDemo();
     useProjectStore.setState({
+      projectId: null,
+      projects: [],
       selectedTaskId: null,
       selectedDependencyId: null,
       notice: null,
@@ -394,6 +441,195 @@ describe('the task detail panel', () => {
   });
 });
 
+/** The task-grid row for a task, so cells can be found within it rather than by index. */
+function gridRow(taskId: string): HTMLElement {
+  const row = document.querySelector(`.gantt__grid-row[data-task-id="${taskId}"]`);
+  if (!row) throw new Error(`No grid row for ${taskId}`);
+  return row as HTMLElement;
+}
+
+describe('editing the chart in place', () => {
+  it('renames a task from its grid cell', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+
+    const field = within(gridRow('t-forward')).getByLabelText(/^Name of /);
+    await user.clear(field);
+    await user.type(field, 'Renamed in the grid');
+    await user.tab();
+
+    await waitFor(() =>
+      expect(
+        useProjectStore.getState().project.tasks.find((t) => t.id === 't-forward')?.name,
+      ).toBe('Renamed in the grid'),
+    );
+  });
+
+  /**
+   * The point of editing through the engine rather than writing dates: a duration change
+   * has to propagate along the dependency graph, not just redraw one bar.
+   */
+  it('changes a duration and the successors reschedule', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+
+    const before = datesOf('t-forward');
+    const field = within(gridRow('t-forward')).getByLabelText(/^Duration in days of /);
+    await user.clear(field);
+    await user.type(field, '9');
+    await user.tab();
+
+    await waitFor(() => {
+      const task = schedule(useProjectStore.getState().project).tasks.get('t-forward')!;
+      expect(task.durationDays).toBe(9);
+    });
+    // The bar got longer, and it did so by rescheduling rather than by moving.
+    expect(datesOf('t-forward').startDay).toBe(before.startDay);
+    expect(datesOf('t-forward').end).not.toBe(before.end);
+  });
+
+  it('moves a task by editing its start date, keeping its duration', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+
+    const before = datesOf('t-forward');
+    const durationBefore = schedule(useProjectStore.getState().project).tasks.get(
+      't-forward',
+    )!.durationDays;
+
+    const later = toISO(before.startDay + 7);
+    const field = within(gridRow('t-forward')).getByLabelText(/^Start date of /);
+    await user.clear(field);
+    await user.type(field, later);
+    await user.tab();
+
+    await waitFor(() => expect(datesOf('t-forward').startDay).toBeGreaterThan(before.startDay));
+    expect(
+      schedule(useProjectStore.getState().project).tasks.get('t-forward')!.durationDays,
+    ).toBe(durationBefore);
+  });
+
+  /**
+   * A summary's numbers are rolled up from its children. Offering an input there would
+   * invite an edit the scheduler must immediately overwrite.
+   */
+  it('offers no duration input on a summary row', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+
+    const summary = within(gridRow('e-engine'));
+    expect(summary.queryByLabelText(/^Duration in days of /)).toBeNull();
+    // Its name is still editable — only the derived numbers are not.
+    expect(summary.getByLabelText(/^Name of /)).toBeTruthy();
+  });
+
+  it('adds a task from a row control and deletes it again', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+
+    const before = useProjectStore.getState().project.tasks.length;
+    await user.click(within(gridRow('t-forward')).getByLabelText(/^Add a task below /));
+
+    await waitFor(() =>
+      expect(useProjectStore.getState().project.tasks.length).toBe(before + 1),
+    );
+
+    const added = useProjectStore.getState().selectedTaskId!;
+    await user.click(within(gridRow(added)).getByLabelText(/^Delete /));
+    await waitFor(() => expect(useProjectStore.getState().project.tasks.length).toBe(before));
+  });
+
+  it('turns the cells back into plain text when the project is view-only', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    expect(within(gridRow('t-forward')).getByLabelText(/^Name of /)).toBeTruthy();
+
+    act(() => useProjectStore.getState().toggleLock());
+
+    await waitFor(() =>
+      expect(within(gridRow('t-forward')).queryByLabelText(/^Name of /)).toBeNull(),
+    );
+  });
+});
+
+describe('multiple projects', () => {
+  it('keeps an import as a new project instead of overwriting the open one', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+
+    // Let the sample project's autosave land, so there is something to overwrite.
+    await waitFor(async () => expect((await listProjects()).length).toBe(1), { timeout: 3000 });
+    const [sample] = await listProjects();
+
+    act(() => {
+      useProjectStore.getState().loadProjectDocument(
+        { ...useProjectStore.getState().project, name: 'Imported from Jira', tasks: [] },
+        'Imported.',
+      );
+    });
+
+    await waitFor(async () => expect((await listProjects()).length).toBe(2), { timeout: 3000 });
+
+    // The original is still there, under its own name and with its tasks intact.
+    const kept = await loadProjectById(sample!.id);
+    expect(kept?.project.tasks.length).toBeGreaterThan(0);
+  });
+
+  it('switches between stored projects', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    await waitFor(async () => expect((await listProjects()).length).toBe(1), { timeout: 3000 });
+    const [sample] = await listProjects();
+
+    act(() => useProjectStore.getState().createNewProject());
+    await waitFor(async () => expect((await listProjects()).length).toBe(2), { timeout: 3000 });
+    expect(useProjectStore.getState().project.tasks).toHaveLength(0);
+
+    await act(async () => {
+      await useProjectStore.getState().switchProject(sample!.id);
+    });
+    expect(useProjectStore.getState().project.tasks.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * Autosave is debounced by 400ms, so an edit made immediately before an import is still
+   * queued when the open document is replaced. It has to be written to the project it was
+   * made in — not dropped when the queue is overwritten, and not redirected into the
+   * project that replaced it.
+   */
+  it('writes an edit queued just before an import into the original project', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    await waitFor(async () => expect((await listProjects()).length).toBe(1), { timeout: 3000 });
+    const [sample] = await listProjects();
+
+    // Edit, then import straight away — well inside the debounce window.
+    act(() => {
+      useProjectStore.getState().updateTask('t-forward', { name: 'Typed just before import' });
+      useProjectStore.getState().loadProjectDocument(
+        { ...useProjectStore.getState().project, name: 'Imported', tasks: [] },
+        'Imported.',
+      );
+    });
+
+    await act(async () => {
+      await flushAutosave();
+    });
+
+    // The edit reached the project it was made in.
+    const original = await loadProjectById(sample!.id);
+    expect(original?.project.tasks.find((t) => t.id === 't-forward')?.name).toBe(
+      'Typed just before import',
+    );
+    // And the import did not land on top of it.
+    expect(original?.project.name).not.toBe('Imported');
+  });
+});
+
 describe('persistence', () => {
   it('autosaves an edit and reloads it', async () => {
     render(<App />);
@@ -406,7 +642,7 @@ describe('persistence', () => {
     // Autosave is debounced, so wait for the write rather than assuming it happened.
     await waitFor(
       async () => {
-        const stored = await loadProject();
+        const stored = await loadStoredProject();
         expect(stored?.project.tasks.find((t) => t.id === 't-forward')?.name).toBe(
           'Renamed by the test',
         );
@@ -420,7 +656,7 @@ describe('persistence', () => {
       useProjectStore.getState().updateTask('t-forward', { name: 'From a previous session' });
     });
     await waitFor(
-      async () => expect((await loadProject())?.project).toBeTruthy(),
+      async () => expect((await loadStoredProject())?.project).toBeTruthy(),
       { timeout: 3000 },
     );
 

@@ -9,11 +9,19 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { GanttChart, Legend, type GanttView } from '@ganttor/gantt';
+import {
+  GanttChart,
+  Legend,
+  type GanttView,
+  type TaskGridAction,
+  type TaskGridEdit,
+} from '@ganttor/gantt';
 
+import { useAuthStore } from './store/useAuthStore.js';
 import { useProjectStore } from './store/useProjectStore.js';
 import { BaselinePanel } from './ui/BaselinePanel.js';
 import { ImportDialog } from './ui/ImportDialog.js';
+import { LoginPage } from './ui/LoginPage.js';
 import { SettingsDialog } from './ui/SettingsDialog.js';
 import { TaskPanel } from './ui/TaskPanel.js';
 import { Toolbar } from './ui/Toolbar.js';
@@ -21,7 +29,35 @@ import { WorkloadPanel } from './ui/WorkloadPanel.js';
 
 type Panel = 'task' | 'workload' | 'baselines';
 
+/**
+ * The auth gate.
+ *
+ * Split from `Workspace` so the app's effects — hydrate, the key handler — never run for
+ * a signed-out visitor. Mounting the workspace behind a conditional render rather than
+ * hiding it means no project request is issued without a session to authorise it.
+ */
 export function App() {
+  const status = useAuthStore((s) => s.status);
+  const initialize = useAuthStore((s) => s.initialize);
+
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
+
+  if (status === 'loading') {
+    return (
+      <div className="ganttor-login" data-gantt-theme="dark">
+        <span className="ganttor-login__sub">Checking your session…</span>
+      </div>
+    );
+  }
+
+  if (status === 'signed-out') return <LoginPage />;
+
+  return <Workspace />;
+}
+
+function Workspace() {
   const project = useProjectStore((s) => s.project);
   const unit = useProjectStore((s) => s.unit);
   const theme = useProjectStore((s) => s.theme);
@@ -41,6 +77,12 @@ export function App() {
   const redo = useProjectStore((s) => s.redo);
   const nudgeTask = useProjectStore((s) => s.nudgeTask);
   const removeTask = useProjectStore((s) => s.removeTask);
+  const updateTask = useProjectStore((s) => s.updateTask);
+  const setTaskStart = useProjectStore((s) => s.setTaskStart);
+  const setAssignee = useProjectStore((s) => s.setAssignee);
+  const addTask = useProjectStore((s) => s.addTask);
+  const indentTask = useProjectStore((s) => s.indentTask);
+  const outdentTask = useProjectStore((s) => s.outdentTask);
 
   const [panel, setPanel] = useState<Panel>('task');
   const [importOpen, setImportOpen] = useState(false);
@@ -57,6 +99,54 @@ export function App() {
   }, [selectedTaskId]);
 
   const handleView = useCallback((next: GanttView) => setView(next), []);
+
+  /**
+   * Grid edits, mapped onto project mutations.
+   *
+   * The grid deliberately does not know that a start date is a constraint rather than a
+   * stored field — that translation happens here, so the chart component stays usable
+   * against any host.
+   */
+  const handleEditTask = useCallback(
+    (taskId: string, edit: TaskGridEdit) => {
+      switch (edit.field) {
+        case 'name':
+          updateTask(taskId, { name: edit.value });
+          return;
+        case 'durationDays':
+          updateTask(taskId, { durationDays: edit.value });
+          return;
+        case 'percentComplete':
+          updateTask(taskId, { percentComplete: edit.value });
+          return;
+        case 'start':
+          setTaskStart(taskId, edit.value);
+          return;
+        case 'assignee':
+          setAssignee(taskId, edit.value);
+      }
+    },
+    [updateTask, setTaskStart, setAssignee],
+  );
+
+  const handleRowAction = useCallback(
+    (taskId: string, action: TaskGridAction) => {
+      switch (action) {
+        case 'add':
+          addTask(taskId);
+          return;
+        case 'delete':
+          removeTask(taskId);
+          return;
+        case 'indent':
+          indentTask(taskId);
+          return;
+        case 'outdent':
+          outdentTask(taskId);
+      }
+    },
+    [addTask, removeTask, indentTask, outdentTask],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -135,6 +225,8 @@ export function App() {
               onToggleCollapse={toggleCollapse}
               onChangeDates={applyDates}
               onCreateLink={createLink}
+              onEditTask={handleEditTask}
+              onRowAction={handleRowAction}
               onView={handleView}
             />
           )}

@@ -21,11 +21,20 @@ export interface RowMetrics {
   baselineHeight: number;
 }
 
+/**
+ * Kept in sync with the `--gantt-row-h` / `--gantt-bar-h` tokens in `gantt.css`: the grid
+ * rows are laid out by CSS and the bars are positioned from these numbers, so the two
+ * drifting apart shows up immediately as bars sitting between their rows.
+ *
+ * Sized for legibility over density. A 26px bar inside a 44px row leaves 9px of clear
+ * space above and below, which is what keeps a run of adjacent bars reading as separate
+ * objects rather than a single striped block.
+ */
 export const DEFAULT_METRICS: RowMetrics = {
-  rowHeight: 28,
-  barHeight: 16,
-  milestoneRadius: 7,
-  baselineHeight: 4,
+  rowHeight: 44,
+  barHeight: 26,
+  milestoneRadius: 11,
+  baselineHeight: 6,
 };
 
 export interface BarBox {

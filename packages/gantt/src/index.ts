@@ -23,7 +23,12 @@
 export * from './core/index.js';
 
 export { GanttChart, type GanttChartProps } from './react/GanttChart.js';
-export { TaskGrid, type TaskGridProps } from './react/TaskGrid.js';
+export {
+  TaskGrid,
+  type TaskGridProps,
+  type TaskGridEdit,
+  type TaskGridAction,
+} from './react/TaskGrid.js';
 export { TimelineHeader, type TimelineHeaderProps } from './react/TimelineHeader.js';
 export { DependencyLayer, type DependencyLayerProps } from './react/DependencyLayer.js';
 export { Legend, type LegendProps } from './react/Legend.js';

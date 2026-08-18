@@ -20,10 +20,13 @@ import type { Project } from '../core/types.js';
 import { DependencyLayer } from './DependencyLayer.js';
 import { estimateTextWidth, labelLayout, type RowMetrics } from './geometry.js';
 import { CATEGORICAL, categoricalIndex } from './palette.js';
-import { TaskGrid } from './TaskGrid.js';
+import { TaskGrid, type TaskGridAction, type TaskGridEdit } from './TaskGrid.js';
 import { TimelineHeader } from './TimelineHeader.js';
 import { useBarDrag } from './useBarDrag.js';
 import { todayX, useGanttView, type GanttRow, type GanttView } from './useGanttView.js';
+
+/** Matches `.gantt__summary-bar`'s height in gantt.css, which centres it in its row. */
+const SUMMARY_BAR_HEIGHT = 11;
 
 export interface GanttChartProps {
   project: Project;
@@ -42,6 +45,13 @@ export interface GanttChartProps {
   onChangeDates?: (taskId: string, dates: TaskDates) => void;
   /** A link was dragged from one bar to another. Validate before accepting. */
   onCreateLink?: (predecessorId: string, successorId: string) => void;
+  /**
+   * A cell in the task grid was edited. Supplying this turns the grid's cells into
+   * inputs; a locked project suppresses them regardless.
+   */
+  onEditTask?: (taskId: string, edit: TaskGridEdit) => void;
+  /** Add / delete / indent / outdent from a grid row's controls. */
+  onRowAction?: (taskId: string, action: TaskGridAction) => void;
   /** Exposes the derived view so a host can render panels from the same schedule. */
   onView?: (view: GanttView) => void;
 }
@@ -54,12 +64,14 @@ export function GanttChart({
   today,
   theme,
   metrics,
-  nameColumnWidth = 260,
+  nameColumnWidth = 300,
   onSelectTask,
   onSelectDependency,
   onToggleCollapse,
   onChangeDates,
   onCreateLink,
+  onEditTask,
+  onRowAction,
   onView,
 }: GanttChartProps) {
   const view = useGanttView({ project, unit, ...(metrics ? { metrics } : {}) });
@@ -160,6 +172,10 @@ export function GanttChart({
             nameColumnWidth={nameColumnWidth}
             onSelect={(id) => onSelectTask?.(id)}
             onToggleCollapse={(id) => onToggleCollapse?.(id)}
+            editable={!locked}
+            resources={project.resources}
+            {...(onEditTask ? { onEditTask } : {})}
+            {...(onRowAction ? { onRowAction } : {})}
           />
 
           <div className="gantt__timeline">
@@ -357,7 +373,7 @@ function Row({
           style={{
             left: x,
             width,
-            top: row.rowIndex * metrics.rowHeight + (metrics.rowHeight - 7) / 2,
+            top: row.rowIndex * metrics.rowHeight + (metrics.rowHeight - SUMMARY_BAR_HEIGHT) / 2,
             background: row.color,
           }}
           data-task-id={task.id}
