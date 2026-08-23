@@ -72,6 +72,19 @@
   --gantt-header-h: 62px;
   --gantt-bar-h: 26px;
 
+  /*
+   * ── Grid column widths ───────────────────────────────────────────────────────
+   * One declaration per track, so the pane's width is *derivable* rather than
+   * duplicated as a magic number in the renderer. `--gantt-col-name` is overridden
+   * inline by TaskGrid when the splitter moves; the rest are fixed.
+   */
+  --gantt-col-name: 300px;
+  --gantt-col-days: 62px;
+  --gantt-col-start: 96px;
+  --gantt-col-finish: 96px;
+  --gantt-col-pct: 52px;
+  --gantt-col-who: 72px;
+
   --gantt-font: ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
   --gantt-font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 
@@ -250,7 +263,12 @@
 .gantt__grid-head-row {
   display: grid;
   grid-template-columns:
-    var(--gantt-col-name, 300px) 62px 96px 96px 52px 72px;
+    var(--gantt-col-name)
+    var(--gantt-col-days)
+    var(--gantt-col-start)
+    var(--gantt-col-finish)
+    var(--gantt-col-pct)
+    var(--gantt-col-who);
   align-items: center;
   height: var(--gantt-row-h);
 }
@@ -372,9 +390,18 @@
 
 /* ── Right pane: the timeline ──────────────────────────────────────────────────── */
 
+/*
+ * No `min-width: 0` here, deliberately.
+ *
+ * The track is `1fr`, which is `minmax(auto, 1fr)`. Zeroing the minimum removes the
+ * min-content contribution, so the track sized itself to whatever viewport happened to
+ * be left over instead of to `scale.totalWidth` — and the header and canvas then
+ * overflowed their own grid cell. Leaving `auto` as the minimum is what makes the
+ * timeline as wide as the axis actually is, which is what gives the scroll container
+ * something to scroll.
+ */
 .gantt__timeline {
   position: relative;
-  min-width: 0;
 }
 
 .gantt__timeline-head {
@@ -562,6 +589,12 @@
 .gantt__bar-label[data-placement='after'],
 .gantt__bar-label[data-placement='before'] {
   color: var(--gantt-text-muted);
+  /*
+   * Only bites when `labelLayout` supplied a `max-width`, which it does only for a label
+   * that would otherwise extend past the end of the axis and inflate `scrollWidth`.
+   */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Resize handles, revealed on hover so they never add visual noise at rest. */
@@ -861,4 +894,56 @@
   border-color: var(--gantt-accent);
   border-style: solid;
   color: var(--gantt-text);
+}
+
+/* ── Grid / timeline splitter ──────────────────────────────────────────────────────
+ *
+ * Hand-rolled rather than a panel library, because the two panes are *one* scroll
+ * container by design (see the Layout note above) — the left pane is `position: sticky`
+ * inside it, which is the mechanism that keeps rows locked to their bars. A resizable
+ * panel component would need a scroller per pane and would reintroduce exactly the
+ * desynchronisation this layout exists to prevent.
+ *
+ * Named `--colsplit`, not `--handle`: `.gantt__handle` is the bar resize affordance, and
+ * a test asserts it is absent while the project is locked. The splitter is available
+ * whether or not editing is.
+ */
+
+.gantt__colsplit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* Straddles the pane border, so the target is 9px wide while the line stays 1px. */
+  right: -5px;
+  width: 9px;
+  z-index: 5;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: col-resize;
+  /* The gesture is horizontal; let the browser keep vertical scrolling. */
+  touch-action: pan-y;
+}
+
+.gantt__colsplit::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--gantt-accent);
+  opacity: 0;
+  transition: opacity 90ms ease-out;
+}
+
+.gantt__colsplit:hover::after,
+.gantt__colsplit:focus-visible::after,
+.gantt__colsplit[data-dragging='true']::after {
+  opacity: 1;
+}
+
+.gantt__colsplit:focus-visible {
+  outline: 2px solid var(--gantt-focus);
+  outline-offset: -2px;
 }

@@ -65,12 +65,23 @@ export interface UseGanttViewOptions {
   metrics?: RowMetrics;
   /** Calendar days of padding either side of the project span. */
   padDays?: number;
+  /**
+   * Asymmetric padding, when the two sides differ. Takes precedence over `padDays`.
+   *
+   * The axis grows independently at each end as you scroll towards it, so a single
+   * symmetric number cannot express the window: scrolling left must not silently extend
+   * the right-hand side as well.
+   */
+  padBefore?: number;
+  padAfter?: number;
 }
 
 export function useGanttView(options: UseGanttViewOptions): GanttView {
   const { project, unit } = options;
   const metrics = options.metrics ?? DEFAULT_METRICS;
   const padDays = options.padDays ?? 7;
+  const padBefore = options.padBefore ?? padDays;
+  const padAfter = options.padAfter ?? padDays;
 
   const result = useMemo(() => schedule(project), [project]);
   const wbs = useMemo(() => buildWbs(project.tasks), [project.tasks]);
@@ -103,8 +114,20 @@ export function useGanttView(options: UseGanttViewOptions): GanttView {
         if (bar.end > to) to = bar.end;
       }
     }
-    return createTimeScale({ unit, from, to, calendar, padDays });
-  }, [unit, result.projectStart, result.projectFinish, calendar, padDays, baseline]);
+    /*
+     * `createTimeScale` still takes a single symmetric `padDays`, so the asymmetry is
+     * applied to the span here instead. Keeping its signature untouched is deliberate:
+     * `timescale.test.ts` pins that contract, and the padding shape is a renderer
+     * concern rather than a scale one.
+     */
+    return createTimeScale({
+      unit,
+      from: from - padBefore,
+      to: to + padAfter,
+      calendar,
+      padDays: 0,
+    });
+  }, [unit, result.projectStart, result.projectFinish, calendar, padBefore, padAfter, baseline]);
 
   const taskById = useMemo(() => {
     const map = new Map<string, Task>();

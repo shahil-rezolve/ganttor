@@ -400,40 +400,45 @@ function DependencyList({
                 {nameOf(otherId)}
               </button>
 
-              <select
-                className="ganttor-select"
-                value={dep.type}
-                disabled={locked}
-                aria-label={`Dependency type for ${nameOf(otherId)}`}
-                onChange={(event) => onChangeType(dep.id, event.target.value as DepType)}
-              >
-                {DEP_TYPES.map((type) => (
-                  <option key={type} value={type} title={DEP_TYPE_LABELS[type]}>
-                    {type}
-                  </option>
-                ))}
-              </select>
+              {/*
+                * The name gets its own line above; type, lag and delete share this one.
+                * Four non-shrinkable children on a single row could not fit the panel.
+                */}
+              <div className="ganttor-dep__controls">
+                <select
+                  className="ganttor-select"
+                  value={dep.type}
+                  disabled={locked}
+                  aria-label={`Dependency type for ${nameOf(otherId)}`}
+                  onChange={(event) => onChangeType(dep.id, event.target.value as DepType)}
+                >
+                  {DEP_TYPES.map((type) => (
+                    <option key={type} value={type} title={DEP_TYPE_LABELS[type]}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
 
-              <input
-                type="number"
-                className="ganttor-input ganttor-input--num"
-                style={{ width: '5ch' }}
-                value={dep.lagDays}
-                disabled={locked}
-                aria-label={`Lag in days for ${nameOf(otherId)}`}
-                title="Working days of lag. Negative values overlap the tasks (a lead)."
-                onChange={(event) => onChangeLag(dep.id, clampInt(event.target.value, -365, 365))}
-              />
+                <input
+                  type="number"
+                  className="ganttor-input ganttor-input--num"
+                  value={dep.lagDays}
+                  disabled={locked}
+                  aria-label={`Lag in days for ${nameOf(otherId)}`}
+                  title="Working days of lag. Negative values overlap the tasks (a lead)."
+                  onChange={(event) => onChangeLag(dep.id, clampInt(event.target.value, -365, 365))}
+                />
 
-              <button
-                type="button"
-                className="ganttor-btn ganttor-btn--ghost ganttor-btn--danger"
-                onClick={() => onRemove(dep.id)}
-                disabled={locked}
-                aria-label={`Remove dependency with ${nameOf(otherId)}`}
-              >
-                ×
-              </button>
+                <button
+                  type="button"
+                  className="ganttor-btn ganttor-btn--ghost ganttor-btn--danger"
+                  onClick={() => onRemove(dep.id)}
+                  disabled={locked}
+                  aria-label={`Remove dependency with ${nameOf(otherId)}`}
+                >
+                  ×
+                </button>
+              </div>
             </div>
           );
         })

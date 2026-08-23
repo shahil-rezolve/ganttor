@@ -51,6 +51,7 @@ import {
 
 import { createDemoProject } from '@ganttor/gantt';
 import { downloadProject } from './persistence.js';
+import { readViewPrefs, writeViewPrefs } from './viewPrefs.js';
 import {
   backendName,
   deleteProjectById,
@@ -206,6 +207,9 @@ export async function flushAutosave(): Promise<void> {
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => {
+  // Read once, at store construction, so zoom and theme survive a reload.
+  const storedPrefs = readViewPrefs();
+
   /**
    * Perform the write.
    *
@@ -311,10 +315,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     projectId: null,
     projects: [],
     backend: backendName(),
-    unit: 'week',
+    unit: storedPrefs.unit,
     selectedTaskId: null,
     selectedDependencyId: null,
-    theme: 'dark',
+    theme: storedPrefs.theme,
     notice: null,
     loading: true,
     lastSavedAt: null,
@@ -470,8 +474,19 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({ notice: note('success', 'Exported the project as a .ganttor.json file.') });
     },
 
-    setUnit: (unit) => set({ unit }),
-    setTheme: (theme) => set({ theme }),
+    /*
+     * Zoom and theme persist to `localStorage`, not into the document — see
+     * `viewPrefs.ts`. Writing them through `setView` would mark the project dirty and
+     * fire the autosave on every zoom click.
+     */
+    setUnit: (unit) => {
+      writeViewPrefs({ unit });
+      set({ unit });
+    },
+    setTheme: (theme) => {
+      writeViewPrefs({ theme });
+      set({ theme });
+    },
     selectTask: (selectedTaskId) => set({ selectedTaskId, selectedDependencyId: null }),
     selectDependency: (selectedDependencyId) =>
       set({ selectedDependencyId, selectedTaskId: null }),

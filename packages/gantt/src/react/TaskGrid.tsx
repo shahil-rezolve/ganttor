@@ -45,10 +45,18 @@ export type TaskGridAction = 'add' | 'delete' | 'indent' | 'outdent';
 
 export interface TaskGridProps {
   rows: readonly GanttRow[];
+  /** Lets the chart measure the pane's real width instead of reconstructing it. */
+  gridRef?: React.Ref<HTMLDivElement>;
   resourceNames: ReadonlyMap<string, string>;
   resourceColorOf: (resourceId: string) => string;
   selectedId: string | null;
   nameColumnWidth: number;
+  /** Supplying the pointer handlers is what renders the splitter at all. */
+  onSplitterPointerDown?: (event: React.PointerEvent<HTMLElement>) => void;
+  onSplitterPointerMove?: (event: React.PointerEvent<HTMLElement>) => void;
+  onSplitterPointerUp?: (event: React.PointerEvent<HTMLElement>) => void;
+  onSplitterKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void;
+  splitterDragging?: boolean;
   onSelect: (taskId: string) => void;
   onToggleCollapse: (taskId: string) => void;
   /** Turns the cells into inputs. Off while the project is view-only. */
@@ -83,10 +91,16 @@ function shortDate(day: number, referenceYear: number): string {
 
 export const TaskGrid = memo(function TaskGrid({
   rows,
+  gridRef,
   resourceNames,
   resourceColorOf,
   selectedId,
   nameColumnWidth,
+  onSplitterPointerDown,
+  onSplitterPointerMove,
+  onSplitterPointerUp,
+  onSplitterKeyDown,
+  splitterDragging,
   onSelect,
   onToggleCollapse,
   editable = false,
@@ -99,10 +113,35 @@ export const TaskGrid = memo(function TaskGrid({
 
   return (
     <div
+      ref={gridRef}
       className="gantt__grid"
       data-editable={canEdit || undefined}
       style={{ ['--gantt-col-name' as string]: `${nameColumnWidth}px` }}
     >
+      {onSplitterPointerDown && (
+        /*
+         * Drag to widen the pane; arrow keys nudge it. A `separator` with an orientation
+         * and a value is what a screen reader needs to report this as a resizer rather
+         * than as an unlabelled button.
+         */
+        <div
+          className="gantt__colsplit"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the task name column"
+          aria-valuenow={Math.round(nameColumnWidth)}
+          tabIndex={0}
+          data-dragging={splitterDragging || undefined}
+          onPointerDown={onSplitterPointerDown}
+          {...(onSplitterPointerMove ? { onPointerMove: onSplitterPointerMove } : {})}
+          {...(onSplitterPointerUp
+            ? { onPointerUp: onSplitterPointerUp, onPointerCancel: onSplitterPointerUp }
+            : {})}
+          {...(onSplitterKeyDown ? { onKeyDown: onSplitterKeyDown } : {})}
+          onClick={(event) => event.stopPropagation()}
+        />
+      )}
+
       <div className="gantt__grid-head">
         <div className="gantt__grid-head-row" role="row">
           <div className="gantt__cell" role="columnheader">
