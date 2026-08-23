@@ -22,7 +22,13 @@
 
 export * from './core/index.js';
 
-export { GanttChart, type GanttChartProps } from './react/GanttChart.js';
+export {
+  GanttChart,
+  NAME_COLUMN_MAX,
+  NAME_COLUMN_MIN,
+  type GanttChartProps,
+} from './react/GanttChart.js';
+export { growAxis, initialPad, type AxisPad, type ScrollGeometry } from './react/axisWindow.js';
 export {
   TaskGrid,
   type TaskGridProps,

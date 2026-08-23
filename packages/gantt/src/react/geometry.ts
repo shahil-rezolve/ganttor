@@ -247,6 +247,16 @@ export function labelLayout(
   estimatedTextWidth: number,
   viewport: { scrollLeft: number; width: number },
   gap = 8,
+  /**
+   * Width of the canvas the label sits on. Supplying it bounds an outside label to the
+   * axis; omitting it leaves the label unconstrained.
+   *
+   * This matters for more than tidiness. An outside label is absolutely positioned and
+   * `nowrap`, so one placed near the right edge extends *past* `totalWidth` and enlarges
+   * the scroll container's `scrollWidth` — producing horizontal scrollbar travel into
+   * empty space that no date corresponds to.
+   */
+  canvasWidth?: number,
 ): LabelLayout {
   const isDiamond = 'cx' in bar;
   const left = isDiamond ? bar.cx - bar.r : bar.x;
@@ -260,10 +270,32 @@ export function labelLayout(
 
   const viewportRight = viewport.scrollLeft + viewport.width;
   if (right + gap + estimatedTextWidth <= viewportRight) {
-    return { placement: 'after', x: right + gap, maxWidth: null };
+    const x = right + gap;
+    return { placement: 'after', x, maxWidth: capAt(canvasWidth, x, estimatedTextWidth) };
   }
+
   // No room on the right edge of the viewport — flip to the left of the bar.
-  return { placement: 'before', x: left - gap - estimatedTextWidth, maxWidth: null };
+  // Clamped at zero: a negative offset would put the text off the axis entirely.
+  const x = Math.max(0, left - gap - estimatedTextWidth);
+  return { placement: 'before', x, maxWidth: capAt(canvasWidth, x, estimatedTextWidth) };
+}
+
+/**
+ * The width cap for an outside label, or `null` for none.
+ *
+ * Only ever caps a label that would otherwise run off the end of the axis. A cap that is
+ * wider than the text constrains nothing, and emitting one anyway would put a pointless
+ * `max-width` on almost every label — so a label that fits stays genuinely unconstrained
+ * and cannot be truncated.
+ */
+function capAt(
+  canvasWidth: number | undefined,
+  x: number,
+  estimatedTextWidth: number,
+): number | null {
+  if (canvasWidth === undefined) return null;
+  const room = Math.max(0, canvasWidth - x);
+  return room >= estimatedTextWidth ? null : room;
 }
 
 /** Rough text width for label placement. Cheap, and only ever used for layout choice. */
