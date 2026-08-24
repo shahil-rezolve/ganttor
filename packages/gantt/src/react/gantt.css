@@ -68,9 +68,22 @@
   --gantt-summary: #7f8b9e;
 
   /* ── Metrics. Mirrors DEFAULT_METRICS in geometry.ts. ───────────────────────── */
-  --gantt-row-h: 28px;
-  --gantt-header-h: 46px;
-  --gantt-bar-h: 16px;
+  --gantt-row-h: 44px;
+  --gantt-header-h: 62px;
+  --gantt-bar-h: 26px;
+
+  /*
+   * ── Grid column widths ───────────────────────────────────────────────────────
+   * One declaration per track, so the pane's width is *derivable* rather than
+   * duplicated as a magic number in the renderer. `--gantt-col-name` is overridden
+   * inline by TaskGrid when the splitter moves; the rest are fixed.
+   */
+  --gantt-col-name: 300px;
+  --gantt-col-days: 62px;
+  --gantt-col-start: 96px;
+  --gantt-col-finish: 96px;
+  --gantt-col-pct: 52px;
+  --gantt-col-who: 72px;
 
   --gantt-font: ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
   --gantt-font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
@@ -78,8 +91,8 @@
   color: var(--gantt-text);
   background: var(--gantt-bg);
   font-family: var(--gantt-font);
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 14px;
+  line-height: 1.45;
 
   display: flex;
   flex-direction: column;
@@ -250,22 +263,27 @@
 .gantt__grid-head-row {
   display: grid;
   grid-template-columns:
-    var(--gantt-col-name, 260px) 46px 78px 78px 40px 44px;
+    var(--gantt-col-name)
+    var(--gantt-col-days)
+    var(--gantt-col-start)
+    var(--gantt-col-finish)
+    var(--gantt-col-pct)
+    var(--gantt-col-who);
   align-items: center;
   height: var(--gantt-row-h);
 }
 
 .gantt__grid-head-row {
-  height: 26px;
+  height: 34px;
   color: var(--gantt-text-faint);
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .gantt__grid-row {
-  border-bottom: 1px solid var(--gantt-hairline);
+  border-bottom: 1px solid var(--gantt-hairline-strong);
   cursor: default;
 }
 
@@ -278,7 +296,7 @@
 }
 
 .gantt__cell {
-  padding: 0 8px;
+  padding: 0 10px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -286,18 +304,19 @@
 
 .gantt__cell--num {
   font-family: var(--gantt-font-mono);
-  font-size: 11px;
+  font-size: 13px;
   color: var(--gantt-text-muted);
   text-align: right;
 }
 
 .gantt__cell--date {
   font-family: var(--gantt-font-mono);
-  font-size: 11px;
+  font-size: 13px;
   color: var(--gantt-text-muted);
 }
 
 .gantt__cell--name {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -322,20 +341,20 @@
 .gantt__key {
   flex: none;
   font-family: var(--gantt-font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--gantt-text-faint);
 }
 
 .gantt__expander {
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: 0;
   border-radius: 3px;
   background: none;
   color: var(--gantt-text-muted);
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1;
   cursor: pointer;
   display: grid;
@@ -359,12 +378,12 @@
 }
 
 .gantt__avatar {
-  width: 17px;
-  height: 17px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--gantt-text-on-accent);
@@ -372,9 +391,18 @@
 
 /* ── Right pane: the timeline ──────────────────────────────────────────────────── */
 
+/*
+ * No `min-width: 0` here, deliberately.
+ *
+ * The track is `1fr`, which is `minmax(auto, 1fr)`. Zeroing the minimum removes the
+ * min-content contribution, so the track sized itself to whatever viewport happened to
+ * be left over instead of to `scale.totalWidth` — and the header and canvas then
+ * overflowed their own grid cell. Leaving `auto` as the minimum is what makes the
+ * timeline as wide as the axis actually is, which is what gives the scroll container
+ * something to scroll.
+ */
 .gantt__timeline {
   position: relative;
-  min-width: 0;
 }
 
 .gantt__timeline-head {
@@ -383,7 +411,7 @@
 
 .gantt__tickrow {
   position: relative;
-  height: 23px;
+  height: 31px;
 }
 
 .gantt__tickrow--major {
@@ -399,7 +427,7 @@
   padding-left: 6px;
   border-left: 1px solid var(--gantt-hairline);
   color: var(--gantt-text-muted);
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -413,7 +441,7 @@
 .gantt__tick--narrow {
   justify-content: center;
   padding-left: 0;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .gantt__tick[data-nonworking='true'] {
@@ -450,7 +478,7 @@
   left: 0;
   right: 0;
   height: var(--gantt-row-h);
-  border-bottom: 1px solid var(--gantt-hairline);
+  border-bottom: 1px solid var(--gantt-hairline-strong);
 }
 
 .gantt__rowline[data-selected='true'] {
@@ -482,7 +510,7 @@
   border-radius: 0 0 3px 0;
   background: var(--gantt-today);
   color: var(--gantt-text-on-accent);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -547,7 +575,7 @@
   height: var(--gantt-row-h);
   display: flex;
   align-items: center;
-  font-size: 11px;
+  font-size: 13px;
   white-space: nowrap;
   pointer-events: none;
 }
@@ -562,6 +590,12 @@
 .gantt__bar-label[data-placement='after'],
 .gantt__bar-label[data-placement='before'] {
   color: var(--gantt-text-muted);
+  /*
+   * Only bites when `labelLayout` supplied a `max-width`, which it does only for a label
+   * that would otherwise extend past the end of the axis and inflate `scrollWidth`.
+   */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Resize handles, revealed on hover so they never add visual noise at rest. */
@@ -591,10 +625,10 @@
 .gantt__linkdot {
   position: absolute;
   top: 50%;
-  width: 9px;
-  height: 9px;
-  margin-top: -4.5px;
-  border: 1.5px solid var(--gantt-accent);
+  width: 13px;
+  height: 13px;
+  margin-top: -6.5px;
+  border: 2px solid var(--gantt-accent);
   border-radius: 50%;
   background: var(--gantt-bg);
   cursor: crosshair;
@@ -628,7 +662,7 @@
 
 .gantt__summary-bar {
   position: absolute;
-  height: 7px;
+  height: 11px;
   background: var(--gantt-summary);
   clip-path: polygon(
     0 0,
@@ -715,4 +749,227 @@
   place-items: center;
   padding: 48px 24px;
   color: var(--gantt-text-faint);
+}
+
+/* ── Editable grid cells ───────────────────────────────────────────────────────────
+ *
+ * The inputs are invisible until hovered or focused. A grid showing forty bordered
+ * boxes at rest reads as a form, not a plan — and the numbers are there to be scanned
+ * far more often than they are edited. The affordance appears where the pointer is.
+ */
+
+.gantt__cell-input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: inherit;
+}
+
+.gantt__cell--num .gantt__cell-input,
+.gantt__cell--date .gantt__cell-input {
+  font-family: var(--gantt-font-mono);
+}
+
+.gantt__cell-input--num {
+  text-align: right;
+  /* The spinners steal width from a column that is already only 62px wide. */
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.gantt__cell-input--num::-webkit-outer-spin-button,
+.gantt__cell-input--num::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.gantt__grid-row:hover .gantt__cell-input {
+  border-color: var(--gantt-hairline-strong);
+  background: var(--gantt-surface-raised);
+}
+
+.gantt__cell-input:focus {
+  outline: none;
+  border-color: var(--gantt-focus);
+  background: var(--gantt-surface-raised);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gantt-focus) 22%, transparent);
+}
+
+.gantt__cell-input--name {
+  flex: 1 1 auto;
+  font-weight: inherit;
+}
+
+.gantt__cell--who {
+  padding: 0 6px;
+  overflow: visible;
+}
+
+.gantt__cell-input--select {
+  cursor: pointer;
+}
+
+/* ── Per-row controls ──────────────────────────────────────────────────────────────
+ * Out of the flow, not merely transparent. Holding ~90px of every name cell open for
+ * buttons that are invisible most of the time is how "Migrate the reporting pipeline to
+ * the warehouse" ends up reading as "Migrate the reporting pip…". At rest the name owns
+ * the whole cell; on hover the tools float in over its tail as a single pill, sharing the
+ * raised surface the name field takes on at the same moment, so the field reads as
+ * continuing underneath them rather than as being cut off by them.
+ *
+ * `pointer-events` matters now that they overlap the field: while hidden they must not
+ * swallow a click aimed at the text behind them. Opacity still leaves them tabbable, and
+ * `focus-within` brings them into view when Tab arrives.
+ */
+
+.gantt__rowtools {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--gantt-hairline-strong);
+  border-radius: 7px;
+  background: var(--gantt-surface-raised);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 90ms ease-out;
+}
+
+.gantt__grid-row:hover .gantt__rowtools,
+.gantt__grid-row:focus-within .gantt__rowtools {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/*
+ * While the name itself is being edited, the tools stand down: that is the one moment
+ * the full width is worth more than the shortcuts, and Tab still reaches them from here.
+ */
+.gantt__cell-input--name:focus ~ .gantt__rowtools {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gantt__rowtool {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--gantt-text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gantt__rowtool:hover {
+  background: var(--gantt-surface-hover);
+  color: var(--gantt-text);
+}
+
+.gantt__rowtool--danger:hover {
+  background: color-mix(in srgb, var(--gantt-critical) 16%, transparent);
+  color: var(--gantt-critical);
+}
+
+.gantt__rowtool:focus-visible {
+  outline: 2px solid var(--gantt-focus);
+  outline-offset: -1px;
+}
+
+/* ── Add-a-task row ────────────────────────────────────────────────────────────────
+ * Sits below the last row, aligned with the outline, so adding work is where the work
+ * ends rather than up in the toolbar.
+ */
+
+.gantt__grid-foot {
+  height: var(--gantt-row-h);
+  display: flex;
+  align-items: center;
+  padding-left: 8px;
+  border-bottom: 1px solid var(--gantt-hairline);
+}
+
+.gantt__addrow {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px dashed var(--gantt-hairline-strong);
+  border-radius: 6px;
+  background: none;
+  color: var(--gantt-text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.gantt__addrow:hover {
+  border-color: var(--gantt-accent);
+  border-style: solid;
+  color: var(--gantt-text);
+}
+
+/* ── Grid / timeline splitter ──────────────────────────────────────────────────────
+ *
+ * Hand-rolled rather than a panel library, because the two panes are *one* scroll
+ * container by design (see the Layout note above) — the left pane is `position: sticky`
+ * inside it, which is the mechanism that keeps rows locked to their bars. A resizable
+ * panel component would need a scroller per pane and would reintroduce exactly the
+ * desynchronisation this layout exists to prevent.
+ *
+ * Named `--colsplit`, not `--handle`: `.gantt__handle` is the bar resize affordance, and
+ * a test asserts it is absent while the project is locked. The splitter is available
+ * whether or not editing is.
+ */
+
+.gantt__colsplit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* Straddles the pane border, so the target is 9px wide while the line stays 1px. */
+  right: -5px;
+  width: 9px;
+  z-index: 5;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: col-resize;
+  /* The gesture is horizontal; let the browser keep vertical scrolling. */
+  touch-action: pan-y;
+}
+
+.gantt__colsplit::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--gantt-accent);
+  opacity: 0;
+  transition: opacity 90ms ease-out;
+}
+
+.gantt__colsplit:hover::after,
+.gantt__colsplit:focus-visible::after,
+.gantt__colsplit[data-dragging='true']::after {
+  opacity: 1;
+}
+
+.gantt__colsplit:focus-visible {
+  outline: 2px solid var(--gantt-focus);
+  outline-offset: -2px;
 }

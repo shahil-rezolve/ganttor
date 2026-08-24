@@ -13,13 +13,33 @@ pure, separately-tested module and everything else is a projection of its output
 ```bash
 pnpm install
 pnpm dev        # http://localhost:5273
-pnpm test       # 259 tests
+pnpm test
 pnpm typecheck
 pnpm build
 ```
 
-No backend, no credentials, no setup. It opens on a 25-task sample project; import your own
-via **Import Jira CSV**.
+It opens on a 25-task sample project; import your own via **Import Jira CSV**.
+
+### Supabase setup
+
+Projects are stored in Supabase behind a single login. Three steps:
+
+1. **Create the table.** Run [`supabase/schema.sql`](./supabase/schema.sql) in the Supabase
+   SQL editor. It creates the `projects` table, its indexes, and the Row Level Security
+   policies. RLS is not optional — the anon key ships in the browser bundle, so the
+   policies are the only thing standing between a stranger and your data.
+2. **Create the account.** Dashboard → Authentication → Users → *Add user*, with
+   **Auto Confirm User** ticked. There is no sign-up page in the app by design; this is the
+   one account.
+3. **Point the app at it.** Copy `apps/ganttor/.env.example` to `apps/ganttor/.env.local`
+   and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from
+   Project Settings → Data API / API Keys.
+
+**Without those variables the app still runs**, falling back to IndexedDB in the current
+browser and skipping the login page. That is what the test suite uses, and it means a fresh
+clone is never locked out of an app whose database does not exist yet. The toolbar says
+*"this browser only"* whenever that fallback is active, so the two states are never
+confusable.
 
 ---
 
@@ -38,7 +58,12 @@ tools/Ganttor/
 │   │   ├── timescale.ts       day/week/month/quarter → pixels
 │   │   └── baseline.ts        frozen snapshots and variance
 │   └── src/react/             DOM rows + SVG arrow overlay, no chart library
-└── apps/ganttor/              the app: Jira CSV import, IndexedDB, panels
+├── apps/ganttor/              the app: login, Jira CSV import, storage, panels
+│   ├── src/lib/supabase.ts    the client, created only when credentials exist
+│   └── src/store/
+│       ├── persistence.ts     the document format + the local IndexedDB store
+│       └── projectRepository.ts  one API over Supabase / IndexedDB
+└── supabase/schema.sql        the table, its policies, and its trigger
 ```
 
 The engine is importable on its own — `@ganttor/gantt/core` has no React dependency:
@@ -131,19 +156,26 @@ cannot drift between views.
 | Today marker | ✅ | Vertical line + flag, hidden when off-axis |
 | Baseline comparison | ✅ | Ghost bars, per-task variance, total slip, "what moved" table |
 | Documented colour scheme | ✅ | `react/palette.ts` — colour is always a function of a field (status/priority/assignee/phase), never per-task. The legend is generated from the same tables, so it can't drift from the scheme |
-| Readable density, 20–30 tasks | ✅ | 28px rows; labels too wide for their bar are placed *outside* it, never truncated. Tested at 30 concurrent tasks |
-| Drag-and-drop editing, persisted | ✅ | Move, resize either edge, drag to link. Pointer capture, day-quantised, one undo entry per gesture. Debounced IndexedDB autosave |
+| Readable density, 20–30 tasks | ✅ | 44px rows, 26px bars; labels too wide for their bar are placed *outside* it, never truncated. Tested at 30 concurrent tasks |
+| Drag-and-drop editing, persisted | ✅ | Move, resize either edge, drag to link. Pointer capture, day-quantised, one undo entry per gesture. Debounced autosave to Supabase |
+| Inline editing in the chart | ✅ | Name, duration, start, % and assignee are editable in the grid itself; each row adds, deletes, indents and outdents. Derived cells (a summary's numbers, every finish date) stay read-only rather than accepting an edit the scheduler must overwrite |
 | Resource workload view | ✅ | Per-person daily heatmap; over-capacity days flagged, worst offender first, click through to the clashing tasks |
 | Comments per task | ✅ | Free-text notes in the detail panel |
 | Update cadence | ✅ | Progress is editable inline and is not a scheduling input, so daily updates never move dates; weekly reflow is automatic |
-| Access control: view-only vs edit | ⚠️ **Partial** | A view-only lock disables all editing. Real per-user permissions need a backend and user accounts — see below |
-| Real-time multi-user editing | ❌ **Not implemented** | Structurally out of scope for a browser-only tool with no server — see below |
+| Access control: view-only vs edit | ⚠️ **Partial** | Supabase Auth gates the app, and RLS scopes every row to its owner. Within the account, a view-only lock disables editing. What is still missing is *multiple* users with differing permissions — see below |
+| Real-time multi-user editing | ❌ **Not implemented** | There is now a server, but no conflict resolution — see below |
 
-**On the two unmet items.** Multi-user editing and per-user permission levels both require a
-server, user identity, and a conflict-resolution strategy; this build is deliberately
-browser-only with no backend, so neither can be honestly claimed. The view-only lock ships
-as the single-user form of access control. Sharing today is by exporting a
-`.ganttor.json` file. Nothing else in the checklist is stubbed or approximated.
+**On the two unmet items.** The app is single-account by design: one user is created in the
+Supabase dashboard and there is no sign-up path. Per-user permission *levels* therefore have
+nothing to grade — they need multiple identities, a sharing model, and a role column, none of
+which exist here. The view-only lock ships as the single-user form of access control.
+
+Real-time collaboration needs more than the backend that now exists. Two tabs editing the
+same project would both autosave the whole document, and last-write-wins would silently
+discard the other's work — so it is left unimplemented rather than half-built. Doing it
+properly means per-field or CRDT merge plus Supabase Realtime subscriptions.
+
+Nothing else in the checklist is stubbed or approximated.
 
 **Attachments** are not implemented (comments are). Storing binaries in IndexedDB was judged
 not to earn its complexity for an offline single-user tool.
@@ -200,13 +232,13 @@ with no imported children is ordinary schedulable work.
 
 ## Tests
 
-259 across the two packages. The engine suite is structured so that each `describe` block
+268 across the two packages. The engine suite is structured so that each `describe` block
 corresponds to a row of the `CRITERIA.md` verification table.
 
 ```bash
 pnpm test                                    # everything
 pnpm --filter @ganttor/gantt test            # 191 — engine + renderer
-pnpm --filter @ganttor/app test              # 68 — import, persistence, end-to-end
+pnpm --filter @ganttor/app test              # 77 — import, storage, end-to-end
 pnpm --filter @ganttor/gantt test:watch
 ```
 
@@ -220,10 +252,15 @@ its float must leave the project finish untouched, and one day more must move it
 one day. That pits the backward pass against the forward pass: two different algorithms
 agreeing.
 
-`App.test.tsx` drives the real app with the real store, the real engine, and a real
-IndexedDB (`fake-indexeddb`) — no mocked scheduler — covering drag-to-reschedule
-propagation, cycle rejection with named tickets, baseline integrity, zoom, the workload
-view, and autosave surviving a reload.
+`App.test.tsx` drives the real app with the real store, the real engine, and the real
+storage layer — no mocked scheduler — covering drag-to-reschedule propagation, cycle
+rejection with named tickets, baseline integrity, zoom, the workload view, editing every
+grid cell, and autosave surviving a reload.
+
+It runs against the repository's IndexedDB backend, because vitest has no Supabase
+credentials. That is the same code path a credential-less browser takes, not a test-only
+mock: `projectRepository.ts` chooses its backend at call time, and both branches return
+documents through the same `parseDocument` validation.
 
 ---
 

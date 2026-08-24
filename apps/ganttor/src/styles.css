@@ -10,6 +10,85 @@
 @import 'tailwindcss';
 @import '@ganttor/gantt/styles.css';
 
+/* ── shadcn token bridge ───────────────────────────────────────────────────────────
+ *
+ * shadcn's token names, aliased onto the chart's existing palette rather than layered
+ * on top of a second one. `inline` is what makes this work: it substitutes
+ * `var(--gantt-*)` into each generated utility instead of emitting a `--color-*`
+ * indirection, so a utility resolves against whatever `--gantt-*` is in scope at the
+ * point of use.
+ *
+ * That is also why there is no `.dark` block and no second palette to keep in step:
+ * `gantt.css` already redefines every `--gantt-*` under `[data-gantt-theme='light']`,
+ * so the existing theme toggle drives shadcn components for free.
+ */
+@theme inline {
+  /* Surfaces */
+  --color-background: var(--gantt-bg);
+  --color-foreground: var(--gantt-text);
+  --color-card: var(--gantt-surface);
+  --color-card-foreground: var(--gantt-text);
+  --color-popover: var(--gantt-surface-raised);
+  --color-popover-foreground: var(--gantt-text);
+  --color-muted: var(--gantt-surface);
+  --color-muted-foreground: var(--gantt-text-muted);
+  --color-accent: var(--gantt-surface-hover);
+  --color-accent-foreground: var(--gantt-text);
+
+  /* Intent */
+  --color-primary: var(--gantt-accent);
+  --color-primary-foreground: var(--gantt-text-on-accent);
+  --color-secondary: var(--gantt-surface-raised);
+  --color-secondary-foreground: var(--gantt-text);
+  --color-destructive: var(--gantt-critical);
+  --color-destructive-foreground: var(--gantt-text-on-accent);
+
+  /*
+   * `--gantt-hairline-strong`, not `--gantt-border`: identical values, but it is the
+   * one `.ganttor-btn` and `.ganttor-select` use, so shadcn surfaces sit flush with
+   * the controls beside them.
+   */
+  --color-border: var(--gantt-hairline-strong);
+  --color-input: var(--gantt-hairline-strong);
+  --color-ring: var(--gantt-focus);
+
+  /* Match the shell's register rather than Tailwind's defaults. */
+  --font-sans: var(--gantt-font);
+  --font-mono: var(--gantt-font-mono);
+  --radius-sm: 4px;
+  --radius-md: 5px; /* .ganttor-btn */
+  --radius-lg: 9px; /* .ganttor-dialog */
+}
+
+/*
+ * The dark variant keys off the attribute the chart already uses, so `data-gantt-theme`
+ * stays the single switch. In practice a `dark:` utility should never be needed — the
+ * tokens above already flip — and reaching for one means a colour got hard-coded.
+ */
+@custom-variant dark (&:where([data-gantt-theme='dark'], [data-gantt-theme='dark'] *));
+
+/* ── Utilities vs. BEM: which one wins ─────────────────────────────────────────────
+ *
+ * Cascade *layers*, not specificity and not source order. Tailwind declares
+ * `@layer theme, base, components, utilities` and puts every utility in
+ * `@layer utilities`; every rule in this file and in `gantt.css` is unlayered. Per the
+ * cascade, unlayered author declarations outrank *all* author layers — so
+ *
+ *     .ganttor-btn { background: … }   beats   bg-card
+ *
+ * unconditionally. Moving the `@import` changes nothing; only `!` (`bg-card!`) escapes,
+ * and that is a smell. The practical consequence is worse than a visible break: adding
+ * a utility to existing BEM markup looks right in the diff and silently does nothing.
+ *
+ * Hence exactly three permitted patterns:
+ *
+ *   1. New markup  → utilities only, no `.ganttor-*` class at all.
+ *   2. Existing markup → BEM only; to change how it looks, edit its rule below.
+ *   3. Migrating an element → delete its BEM class in the same commit that adds the
+ *      utilities. Never leave both on one element "for now" — that is precisely the
+ *      state where the utilities are inert.
+ */
+
 :root {
   color-scheme: dark light;
 }
@@ -23,7 +102,15 @@
   background: var(--gantt-bg);
   color: var(--gantt-text);
   font-family: var(--gantt-font);
-  font-size: 12px;
+  font-size: 14px;
+  /*
+   * The shell carries both `.ganttor` and `.gantt`, and `.gantt` sets
+   * `overflow: hidden` for the chart's own benefit. Inherited by the app root, that
+   * silently *clips* anything which overflows instead of letting it scroll or escape —
+   * including popovers. Both selectors are one class, and this file is imported after
+   * `gantt.css`, so restating it here wins on source order.
+   */
+  overflow: visible;
 }
 
 html,
@@ -47,31 +134,69 @@ body {
 
 .ganttor-bar {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
   flex: none;
-  height: 42px;
-  padding: 0 12px;
   background: var(--gantt-surface);
   border-bottom: 1px solid var(--gantt-border);
 }
 
+.ganttor-bar__tier {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 14px;
+  /*
+   * Without this a flex item's automatic minimum size is its *content* size, so a long
+   * project name or project list would refuse to shrink and push the tier wider than
+   * the window instead of taking less room. This is the single declaration that makes
+   * the header fit.
+   */
+  min-width: 0;
+}
+
+.ganttor-bar__tier--view {
+  border-top: 1px solid var(--gantt-hairline);
+  /*
+   * Below roughly 1150px the view controls stop fitting even at their intrinsic widths.
+   * Scrolling this tier degrades far better than clipping it: everything stays
+   * reachable, which is exactly what the old single row got wrong.
+   */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+/* Controls keep their intrinsic width; only the title and the pickers give ground. */
+.ganttor-bar__tier > .ganttor-btn,
+.ganttor-bar__tier > .ganttor-seg,
+.ganttor-bar__tier > .ganttor-row,
+.ganttor-bar__tier > .ganttor-brand {
+  flex: none;
+}
+
 .ganttor-bar__spacer {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .ganttor-bar__title {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.01em;
   background: none;
   border: 1px solid transparent;
   border-radius: 4px;
   color: var(--gantt-text);
-  padding: 3px 6px;
-  min-width: 6ch;
-  max-width: 28ch;
+  padding: 5px 9px;
   font-family: inherit;
+  /*
+   * Grows into the leftover room instead of being capped. The old `max-width: 28ch`
+   * truncated real project names while empty space sat further along the bar.
+   */
+  flex: 1 1 auto;
+  min-width: 8ch;
+  width: auto;
 }
 
 .ganttor-bar__title:hover {
@@ -94,13 +219,13 @@ body {
 }
 
 .ganttor-brand__mark {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
 .ganttor-brand__meta {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--gantt-text-faint);
   font-variant-numeric: tabular-nums;
 }
@@ -111,14 +236,14 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 26px;
-  padding: 0 9px;
+  height: 34px;
+  padding: 0 13px;
   border: 1px solid var(--gantt-hairline-strong);
   border-radius: 5px;
   background: var(--gantt-surface-raised);
   color: var(--gantt-text);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 550;
   cursor: pointer;
   white-space: nowrap;
@@ -181,14 +306,14 @@ body {
 }
 
 .ganttor-seg__item {
-  height: 26px;
-  padding: 0 9px;
+  height: 34px;
+  padding: 0 13px;
   border: 0;
   border-right: 1px solid var(--gantt-hairline-strong);
   background: none;
   color: var(--gantt-text-muted);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 550;
   cursor: pointer;
 }
@@ -197,9 +322,17 @@ body {
   border-right: 0;
 }
 
+/*
+ * The selected unit has to be unmistakable. A faint background fill alone was not
+ * readable as "selected" — which is a large part of why the chart appeared stuck on
+ * week view even though all four buttons worked. Accent text plus weight plus an inset
+ * top rule carries it without introducing a new colour.
+ */
 .ganttor-seg__item[aria-pressed='true'] {
   background: var(--gantt-surface-selected);
-  color: var(--gantt-text);
+  color: var(--gantt-accent);
+  font-weight: 700;
+  box-shadow: inset 0 2px 0 0 var(--gantt-accent);
 }
 
 .ganttor-seg__item:hover:not([aria-pressed='true']) {
@@ -209,14 +342,14 @@ body {
 
 .ganttor-select,
 .ganttor-input {
-  height: 26px;
-  padding: 0 7px;
+  height: 34px;
+  padding: 0 10px;
   border: 1px solid var(--gantt-hairline-strong);
   border-radius: 5px;
   background: var(--gantt-surface-raised);
   color: var(--gantt-text);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .ganttor-input--num {
@@ -224,6 +357,19 @@ body {
   font-variant-numeric: tabular-nums;
   text-align: right;
   width: 6ch;
+  /*
+   * The spinners eat roughly 16px of a 6ch field — enough that a three-digit lag was
+   * clipped. `gantt.css` already does this for the grid's own number cells; the panel's
+   * inputs needed the same treatment.
+   */
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.ganttor-input--num::-webkit-outer-spin-button,
+.ganttor-input--num::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
 }
 
 .ganttor-select:focus,
@@ -239,7 +385,7 @@ body {
 }
 
 .ganttor-field__label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -247,7 +393,7 @@ body {
 }
 
 .ganttor-field__hint {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--gantt-text-faint);
 }
 
@@ -271,13 +417,78 @@ body {
   min-width: 0;
 }
 
-.ganttor-panel {
+/*
+ * The width lives on the host, not on `.ganttor-panel` itself, so that class stays on
+ * the element wrapping the panel's content — two tests locate the panel by it.
+ */
+.ganttor-panelhost {
   flex: none;
-  width: 322px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.ganttor-panelhost:empty {
+  display: none;
+}
+
+.ganttor-panel {
+  flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  /*
+   * A horizontal escape hatch. The field grid below drops to one column when the panel
+   * is narrow, but a long unbroken string — a Jira summary with no spaces — can still
+   * exceed any width, and clipping it silently was the old behaviour.
+   */
+  overflow-x: auto;
   background: var(--gantt-surface);
   border-left: 1px solid var(--gantt-border);
+  /*
+   * Makes the panel's *own* width the query basis below. The viewport's width is the
+   * wrong question: the panel is resizable, so it can be narrow on a wide screen.
+   */
+  container-type: inline-size;
+  container-name: ganttor-panel;
+}
+
+/* ── Splitters ─────────────────────────────────────────────────────────────────────
+ * Both splitters are hand-rolled on pointer capture. The chart's own splitter has to be
+ * (its two panes share one scroll container by design), and once that helper exists a
+ * panel library would be a dependency earning nothing.
+ */
+
+.ganttor-split {
+  flex: none;
+  width: 5px;
+  margin: 0 -2px;
+  z-index: 2;
+  cursor: col-resize;
+  background: none;
+  /* The gesture is horizontal; leave vertical scrolling to the browser. */
+  touch-action: pan-y;
+  position: relative;
+}
+
+.ganttor-split::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  background: var(--gantt-accent);
+  opacity: 0;
+  transition: opacity 90ms ease-out;
+}
+
+.ganttor-split:hover::after,
+.ganttor-split:focus-visible::after,
+.ganttor-split[data-dragging='true']::after {
+  opacity: 1;
+}
+
+.ganttor-split:focus-visible {
+  outline: 2px solid var(--gantt-focus);
+  outline-offset: -2px;
 }
 
 .ganttor-panel__head {
@@ -287,21 +498,21 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 34px;
-  padding: 0 10px;
+  height: 42px;
+  padding: 0 14px;
   background: var(--gantt-surface);
   border-bottom: 1px solid var(--gantt-hairline);
 }
 
 .ganttor-panel__title {
   flex: 1;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 650;
   letter-spacing: 0.02em;
 }
 
 .ganttor-panel__body {
-  padding: 10px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -314,7 +525,7 @@ body {
 }
 
 .ganttor-section__title {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -337,6 +548,16 @@ body {
   gap: 7px;
 }
 
+/*
+ * Two ~140px columns plus a gap cannot hold a label like "Duration (days)" and its
+ * input. Below this the pair stacks instead of both halves overflowing.
+ */
+@container ganttor-panel (max-width: 340px) {
+  .ganttor-grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Read-only stat rows ───────────────────────────────────────────────────────── */
 
 .ganttor-stat {
@@ -344,7 +565,7 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 3px 0;
+  padding: 5px 0;
   border-bottom: 1px solid var(--gantt-hairline);
 }
 
@@ -355,7 +576,7 @@ body {
 .ganttor-stat__value {
   font-family: var(--gantt-font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .ganttor-stat__value--critical {
@@ -369,24 +590,54 @@ body {
 
 /* ── Dependency list ───────────────────────────────────────────────────────────── */
 
+/*
+ * Two lines, not four columns.
+ *
+ * This was `1fr auto auto auto` — a name, a type select, a lag input and a delete button,
+ * four non-shrinkable children competing for what used to be 294px of usable panel. The
+ * name lost every time and the controls still overflowed. Giving the name its own line
+ * means it gets the full width, and the controls below it get their intrinsic sizes.
+ */
 .ganttor-dep {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 5px;
-  padding: 5px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--gantt-hairline);
+  min-width: 0;
 }
 
 .ganttor-dep__name {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  /* Without this the flex item's automatic minimum is its text, so it never ellipsises. */
+  min-width: 0;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.ganttor-dep__controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ganttor-dep__controls > .ganttor-select,
+.ganttor-dep__controls > .ganttor-input {
+  flex: none;
+}
+
+/* Pushes delete to the far edge, away from the two controls it must not be mistaken for. */
+.ganttor-dep__controls > .ganttor-btn--danger {
+  margin-left: auto;
 }
 
 .ganttor-dep__key {
   font-family: var(--gantt-font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--gantt-text-faint);
   margin-right: 4px;
 }
@@ -398,11 +649,11 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 4px 11px;
-  padding: 6px 12px;
+  padding: 9px 16px;
   flex: none;
   background: var(--gantt-surface);
   border-top: 1px solid var(--gantt-border);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--gantt-text-muted);
 }
 
@@ -422,7 +673,7 @@ body {
 
 .ganttor-legend__swatch {
   width: 9px;
-  height: 9px;
+  height: 12px;
   border-radius: 2px;
   flex: none;
 }
@@ -439,7 +690,7 @@ body {
   align-items: center;
   gap: 8px;
   flex: none;
-  padding: 6px 12px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--gantt-border);
   font-size: 11px;
 }
@@ -481,7 +732,7 @@ body {
   background: var(--gantt-surface);
   color: var(--gantt-text);
   font-family: var(--gantt-font);
-  font-size: 12px;
+  font-size: 14px;
   overflow: hidden;
 }
 
@@ -489,19 +740,19 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--gantt-border);
 }
 
 .ganttor-dialog__title {
   flex: 1;
   margin: 0;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 650;
 }
 
 .ganttor-dialog__body {
-  padding: 14px;
+  padding: 20px;
   overflow-y: auto;
   max-height: 62vh;
   display: flex;
@@ -513,7 +764,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 14px;
+  padding: 14px 20px;
   border-top: 1px solid var(--gantt-border);
   background: var(--gantt-surface-raised);
 }
@@ -524,7 +775,7 @@ body {
   display: grid;
   place-items: center;
   gap: 6px;
-  padding: 28px;
+  padding: 36px;
   border: 1.5px dashed var(--gantt-hairline-strong);
   border-radius: 8px;
   background: var(--gantt-bg);
@@ -544,7 +795,7 @@ body {
 .ganttor-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .ganttor-table th {
@@ -552,18 +803,18 @@ body {
   top: 0;
   background: var(--gantt-surface);
   text-align: left;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--gantt-text-faint);
-  padding: 5px 7px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--gantt-border);
   white-space: nowrap;
 }
 
 .ganttor-table td {
-  padding: 4px 7px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--gantt-hairline);
   vertical-align: top;
 }
@@ -583,11 +834,11 @@ body {
 
 .ganttor-tag {
   display: inline-block;
-  padding: 1px 5px;
+  padding: 2px 7px;
   border-radius: 3px;
   background: var(--gantt-surface-hover);
   color: var(--gantt-text-muted);
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -620,7 +871,7 @@ body {
 .ganttor-load__track {
   display: flex;
   gap: 1px;
-  height: 15px;
+  height: 22px;
 }
 
 .ganttor-load__cell {
@@ -643,7 +894,7 @@ body {
 }
 
 .ganttor-empty {
-  padding: 18px 4px;
+  padding: 24px 6px;
   color: var(--gantt-text-faint);
   text-align: center;
 }
@@ -652,18 +903,116 @@ body {
 
 .ganttor-textarea {
   width: 100%;
-  min-height: 62px;
-  padding: 6px 7px;
+  min-height: 84px;
+  padding: 9px 10px;
   border: 1px solid var(--gantt-hairline-strong);
   border-radius: 5px;
   background: var(--gantt-surface-raised);
   color: var(--gantt-text);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   resize: vertical;
 }
 
 .ganttor-textarea:focus {
   outline: none;
   border-color: var(--gantt-accent);
+}
+
+/* ── Larger control variants ───────────────────────────────────────────────────────
+ * Used where a control is the primary target on its screen rather than one of twenty
+ * in a toolbar — the login form, chiefly. Same tokens, more room.
+ */
+
+.ganttor-btn--lg {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.ganttor-input--lg {
+  height: 44px;
+  padding: 0 13px;
+  font-size: 15px;
+  border-radius: 8px;
+}
+
+/* ── Login ─────────────────────────────────────────────────────────────────────────
+ * Full-screen, centred, and the only thing on it. The card carries its own colours
+ * rather than inheriting `.ganttor`, because it renders before the app shell exists.
+ */
+
+.ganttor-login {
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--gantt-bg, #0e1014);
+  color: var(--gantt-text, #e6e9ef);
+  font-family: var(--gantt-font, ui-sans-serif, -apple-system, system-ui, sans-serif);
+  font-size: 14px;
+}
+
+.ganttor-login__card {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 32px;
+  border: 1px solid var(--gantt-border, #2a313c);
+  border-radius: 14px;
+  background: var(--gantt-surface, #14171d);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+.ganttor-login__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ganttor-login__mark {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gantt-accent, #5b8cff);
+}
+
+.ganttor-login__title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.ganttor-login__sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--gantt-text-muted, #9aa4b4);
+}
+
+.ganttor-login__submit {
+  margin-top: 4px;
+  width: 100%;
+}
+
+/* ── Project picker ────────────────────────────────────────────────────────────────
+ * Sits in the toolbar next to the project name. The delete control is deliberately
+ * separate from the list rather than a row action, so switching projects can never be
+ * one mis-click away from destroying one.
+ */
+
+.ganttor-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ganttor-picker__select {
+  max-width: 220px;
 }

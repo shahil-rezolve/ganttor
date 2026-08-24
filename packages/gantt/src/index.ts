@@ -22,8 +22,19 @@
 
 export * from './core/index.js';
 
-export { GanttChart, type GanttChartProps } from './react/GanttChart.js';
-export { TaskGrid, type TaskGridProps } from './react/TaskGrid.js';
+export {
+  GanttChart,
+  NAME_COLUMN_MAX,
+  NAME_COLUMN_MIN,
+  type GanttChartProps,
+} from './react/GanttChart.js';
+export { growAxis, initialPad, type AxisPad, type ScrollGeometry } from './react/axisWindow.js';
+export {
+  TaskGrid,
+  type TaskGridProps,
+  type TaskGridEdit,
+  type TaskGridAction,
+} from './react/TaskGrid.js';
 export { TimelineHeader, type TimelineHeaderProps } from './react/TimelineHeader.js';
 export { DependencyLayer, type DependencyLayerProps } from './react/DependencyLayer.js';
 export { Legend, type LegendProps } from './react/Legend.js';

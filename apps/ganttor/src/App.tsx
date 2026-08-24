@@ -7,13 +7,29 @@
  * rather than each recomputing it.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { GanttChart, Legend, type GanttView } from '@ganttor/gantt';
+import {
+  GanttChart,
+  Legend,
+  type GanttView,
+  type TaskGridAction,
+  type TaskGridEdit,
+} from '@ganttor/gantt';
 
+import { OVERLAY_HOST_ID } from './lib/portal.js';
+import { useAuthStore } from './store/useAuthStore.js';
 import { useProjectStore } from './store/useProjectStore.js';
+import {
+  clamp,
+  PANEL_MAX,
+  PANEL_MIN,
+  readViewPrefs,
+  writeViewPrefs,
+} from './store/viewPrefs.js';
 import { BaselinePanel } from './ui/BaselinePanel.js';
 import { ImportDialog } from './ui/ImportDialog.js';
+import { LoginPage } from './ui/LoginPage.js';
 import { SettingsDialog } from './ui/SettingsDialog.js';
 import { TaskPanel } from './ui/TaskPanel.js';
 import { Toolbar } from './ui/Toolbar.js';
@@ -21,7 +37,35 @@ import { WorkloadPanel } from './ui/WorkloadPanel.js';
 
 type Panel = 'task' | 'workload' | 'baselines';
 
+/**
+ * The auth gate.
+ *
+ * Split from `Workspace` so the app's effects — hydrate, the key handler — never run for
+ * a signed-out visitor. Mounting the workspace behind a conditional render rather than
+ * hiding it means no project request is issued without a session to authorise it.
+ */
 export function App() {
+  const status = useAuthStore((s) => s.status);
+  const initialize = useAuthStore((s) => s.initialize);
+
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
+
+  if (status === 'loading') {
+    return (
+      <div className="ganttor-login" data-gantt-theme="dark">
+        <span className="ganttor-login__sub">Checking your session…</span>
+      </div>
+    );
+  }
+
+  if (status === 'signed-out') return <LoginPage />;
+
+  return <Workspace />;
+}
+
+function Workspace() {
   const project = useProjectStore((s) => s.project);
   const unit = useProjectStore((s) => s.unit);
   const theme = useProjectStore((s) => s.theme);
@@ -41,11 +85,84 @@ export function App() {
   const redo = useProjectStore((s) => s.redo);
   const nudgeTask = useProjectStore((s) => s.nudgeTask);
   const removeTask = useProjectStore((s) => s.removeTask);
+  const updateTask = useProjectStore((s) => s.updateTask);
+  const setTaskStart = useProjectStore((s) => s.setTaskStart);
+  const setAssignee = useProjectStore((s) => s.setAssignee);
+  const addTask = useProjectStore((s) => s.addTask);
+  const indentTask = useProjectStore((s) => s.indentTask);
+  const outdentTask = useProjectStore((s) => s.outdentTask);
 
   const [panel, setPanel] = useState<Panel>('task');
   const [importOpen, setImportOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [view, setView] = useState<GanttView | null>(null);
+
+  /*
+   * ── Layout, remembered per browser ──────────────────────────────────────────────
+   * Read once on mount. `nameColumnWidth` stays `null` until the splitter is dragged,
+   * which is what lets the chart auto-fit the column to the longest visible name; the
+   * moment the user expresses a preference, it wins.
+   */
+  const [nameColumnWidth, setNameColumnWidth] = useState<number | null>(
+    () => readViewPrefs().nameColumnWidth,
+  );
+  const [panelWidth, setPanelWidth] = useState<number>(() => readViewPrefs().panelWidth);
+  const [todayToken, setTodayToken] = useState(0);
+
+  const handleNameColumnWidthChange = useCallback((px: number) => {
+    setNameColumnWidth(px);
+    writeViewPrefs({ nameColumnWidth: px });
+  }, []);
+
+  const showToday = useCallback(() => setTodayToken((token) => token + 1), []);
+
+  /* The detail-panel splitter. Same pointer-capture shape as the chart's own. */
+  const panelGesture = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [panelDragging, setPanelDragging] = useState(false);
+
+  const onPanelSplitDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      panelGesture.current = { startX: event.clientX, startWidth: panelWidth };
+      setPanelDragging(true);
+    },
+    [panelWidth],
+  );
+
+  const onPanelSplitMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const gesture = panelGesture.current;
+    if (!gesture) return;
+    // The panel is on the right, so dragging left must widen it.
+    setPanelWidth(
+      clamp(gesture.startWidth - (event.clientX - gesture.startX), PANEL_MIN, PANEL_MAX),
+    );
+  }, []);
+
+  const onPanelSplitUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!panelGesture.current) return;
+    panelGesture.current = null;
+    setPanelDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    // Persist on release, not per pointer move — one write per gesture.
+    setPanelWidth((width) => {
+      writeViewPrefs({ panelWidth: width });
+      return width;
+    });
+  }, []);
+
+  const onPanelSplitKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const step = (event.shiftKey ? 40 : 12) * (event.key === 'ArrowLeft' ? 1 : -1);
+    setPanelWidth((width) => {
+      const next = clamp(width + step, PANEL_MIN, PANEL_MAX);
+      writeViewPrefs({ panelWidth: next });
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     void hydrate();
@@ -57,6 +174,54 @@ export function App() {
   }, [selectedTaskId]);
 
   const handleView = useCallback((next: GanttView) => setView(next), []);
+
+  /**
+   * Grid edits, mapped onto project mutations.
+   *
+   * The grid deliberately does not know that a start date is a constraint rather than a
+   * stored field — that translation happens here, so the chart component stays usable
+   * against any host.
+   */
+  const handleEditTask = useCallback(
+    (taskId: string, edit: TaskGridEdit) => {
+      switch (edit.field) {
+        case 'name':
+          updateTask(taskId, { name: edit.value });
+          return;
+        case 'durationDays':
+          updateTask(taskId, { durationDays: edit.value });
+          return;
+        case 'percentComplete':
+          updateTask(taskId, { percentComplete: edit.value });
+          return;
+        case 'start':
+          setTaskStart(taskId, edit.value);
+          return;
+        case 'assignee':
+          setAssignee(taskId, edit.value);
+      }
+    },
+    [updateTask, setTaskStart, setAssignee],
+  );
+
+  const handleRowAction = useCallback(
+    (taskId: string, action: TaskGridAction) => {
+      switch (action) {
+        case 'add':
+          addTask(taskId);
+          return;
+        case 'delete':
+          removeTask(taskId);
+          return;
+        case 'indent':
+          indentTask(taskId);
+          return;
+        case 'outdent':
+          outdentTask(taskId);
+      }
+    },
+    [addTask, removeTask, indentTask, outdentTask],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -95,6 +260,7 @@ export function App() {
         onSettings={() => setSettingsOpen(true)}
         panel={panel}
         onPanelChange={setPanel}
+        onToday={showToday}
       />
 
       {notice && (
@@ -128,6 +294,10 @@ export function App() {
               project={project}
               unit={unit}
               theme={theme}
+              growAxis
+              scrollToTodayToken={todayToken}
+              {...(nameColumnWidth !== null ? { nameColumnWidth } : {})}
+              onNameColumnWidthChange={handleNameColumnWidthChange}
               selectedTaskId={selectedTaskId}
               selectedDependencyId={selectedDependencyId}
               onSelectTask={selectTask}
@@ -135,14 +305,37 @@ export function App() {
               onToggleCollapse={toggleCollapse}
               onChangeDates={applyDates}
               onCreateLink={createLink}
+              onEditTask={handleEditTask}
+              onRowAction={handleRowAction}
               onView={handleView}
             />
           )}
         </div>
 
-        {panel === 'task' && <TaskPanel view={view} />}
-        {panel === 'workload' && <WorkloadPanel view={view} />}
-        {panel === 'baselines' && <BaselinePanel view={view} />}
+        <div
+          className="ganttor-split"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the detail panel"
+          aria-valuenow={Math.round(panelWidth)}
+          tabIndex={0}
+          data-dragging={panelDragging || undefined}
+          onPointerDown={onPanelSplitDown}
+          onPointerMove={onPanelSplitMove}
+          onPointerUp={onPanelSplitUp}
+          onPointerCancel={onPanelSplitUp}
+          onKeyDown={onPanelSplitKeyDown}
+        />
+
+        {/*
+         * The width lives on a wrapper so `.ganttor-panel` stays the element that holds
+         * the panel's content — two tests reach for it by class name.
+         */}
+        <div className="ganttor-panelhost" style={{ width: panelWidth }}>
+          {panel === 'task' && <TaskPanel view={view} />}
+          {panel === 'workload' && <WorkloadPanel view={view} />}
+          {panel === 'baselines' && <BaselinePanel view={view} />}
+        </div>
       </div>
 
       {view && (
@@ -151,6 +344,12 @@ export function App() {
 
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/*
+       * Portalled overlays mount here rather than on `document.body`, so they stay
+       * inside the `--gantt-*` token scope. Empty, so it contributes no layout.
+       */}
+      <div id={OVERLAY_HOST_ID} />
     </div>
   );
 }
