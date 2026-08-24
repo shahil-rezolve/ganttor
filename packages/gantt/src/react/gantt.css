@@ -316,6 +316,7 @@
 }
 
 .gantt__cell--name {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -815,35 +816,60 @@
 }
 
 /* ── Per-row controls ──────────────────────────────────────────────────────────────
- * Hidden until the row is hovered or holds focus, so a 30-row plan is not a wall of
- * icons. `focus-within` is what keeps them reachable by keyboard.
+ * Out of the flow, not merely transparent. Holding ~90px of every name cell open for
+ * buttons that are invisible most of the time is how "Migrate the reporting pipeline to
+ * the warehouse" ends up reading as "Migrate the reporting pip…". At rest the name owns
+ * the whole cell; on hover the tools float in over its tail as a single pill, sharing the
+ * raised surface the name field takes on at the same moment, so the field reads as
+ * continuing underneath them rather than as being cut off by them.
+ *
+ * `pointer-events` matters now that they overlap the field: while hidden they must not
+ * swallow a click aimed at the text behind them. Opacity still leaves them tabbable, and
+ * `focus-within` brings them into view when Tab arrives.
  */
 
 .gantt__rowtools {
-  flex: none;
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  padding-left: 4px;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--gantt-hairline-strong);
+  border-radius: 7px;
+  background: var(--gantt-surface-raised);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 90ms ease-out;
 }
 
 .gantt__grid-row:hover .gantt__rowtools,
 .gantt__grid-row:focus-within .gantt__rowtools {
   opacity: 1;
+  pointer-events: auto;
+}
+
+/*
+ * While the name itself is being edited, the tools stand down: that is the one moment
+ * the full width is worth more than the shortcuts, and Tab still reaches them from here.
+ */
+.gantt__cell-input--name:focus ~ .gantt__rowtools {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .gantt__rowtool {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   display: grid;
   place-items: center;
-  border: 1px solid var(--gantt-hairline-strong);
+  border: 0;
   border-radius: 5px;
-  background: var(--gantt-surface-raised);
+  background: none;
   color: var(--gantt-text-muted);
   font-size: 13px;
   line-height: 1;
@@ -851,18 +877,18 @@
 }
 
 .gantt__rowtool:hover {
-  border-color: var(--gantt-accent);
+  background: var(--gantt-surface-hover);
   color: var(--gantt-text);
 }
 
 .gantt__rowtool--danger:hover {
-  border-color: var(--gantt-critical);
+  background: color-mix(in srgb, var(--gantt-critical) 16%, transparent);
   color: var(--gantt-critical);
 }
 
 .gantt__rowtool:focus-visible {
   outline: 2px solid var(--gantt-focus);
-  outline-offset: 1px;
+  outline-offset: -1px;
 }
 
 /* ── Add-a-task row ────────────────────────────────────────────────────────────────
