@@ -75,6 +75,7 @@ function Workspace() {
   const selectedDependencyId = useProjectStore((s) => s.selectedDependencyId);
 
   const hydrate = useProjectStore((s) => s.hydrate);
+  const refreshProjects = useProjectStore((s) => s.refreshProjects);
   const selectTask = useProjectStore((s) => s.selectTask);
   const selectDependency = useProjectStore((s) => s.selectDependency);
   const toggleCollapse = useProjectStore((s) => s.toggleCollapse);
@@ -167,6 +168,34 @@ function Workspace() {
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  /*
+   * The workspace is shared, so the picker goes stale the moment a teammate saves. There
+   * is no Realtime subscription — coming back to the tab is the moment you would notice,
+   * and it is cheap enough to just re-read then.
+   *
+   * Both events fire on a return to a backgrounded tab, hence the guard: one refresh per
+   * visit, not two. jsdom raises neither on its own, so the test suite is unaffected.
+   */
+  useEffect(() => {
+    let lastRefresh = 0;
+    const REFRESH_GUARD_MS = 5000;
+
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastRefresh < REFRESH_GUARD_MS) return;
+      lastRefresh = now;
+      void refreshProjects();
+    };
+
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [refreshProjects]);
 
   // Selecting a task should show its details, or the panel choice feels ignored.
   useEffect(() => {

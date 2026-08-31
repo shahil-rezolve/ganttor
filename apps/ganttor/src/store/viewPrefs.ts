@@ -23,6 +23,14 @@ export interface ViewPrefs {
   nameColumnWidth: number | null;
   /** Width of the detail panel in px. */
   panelWidth: number;
+  /**
+   * The project this browser last had open, so a reload reopens *your* work.
+   *
+   * The workspace is shared, so "most recently touched" now means whatever anyone edited
+   * last — without this, signing in could drop you into a colleague's project. `null`
+   * falls back to that behaviour, which is still right for a first visit.
+   */
+  lastProjectId: string | null;
 }
 
 export const NAME_COLUMN_MIN = 160;
@@ -36,6 +44,7 @@ export const DEFAULT_VIEW_PREFS: ViewPrefs = {
   theme: 'dark',
   nameColumnWidth: null,
   panelWidth: PANEL_DEFAULT,
+  lastProjectId: null,
 };
 
 export function clamp(value: number, min: number, max: number): number {
@@ -78,7 +87,10 @@ export function readViewPrefs(): ViewPrefs {
         ? clamp(storedPanel, PANEL_MIN, PANEL_MAX)
         : PANEL_DEFAULT;
 
-    return { unit, theme, nameColumnWidth, panelWidth };
+    const storedLast = record['lastProjectId'];
+    const lastProjectId = typeof storedLast === 'string' && storedLast ? storedLast : null;
+
+    return { unit, theme, nameColumnWidth, panelWidth, lastProjectId };
   } catch {
     return DEFAULT_VIEW_PREFS;
   }

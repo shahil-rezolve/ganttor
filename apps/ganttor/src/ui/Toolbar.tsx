@@ -72,6 +72,8 @@ export function Toolbar({ onImport, onSettings, panel, onPanelChange, onToday }:
   const switchProject = useProjectStore((s) => s.switchProject);
   const createNewProject = useProjectStore((s) => s.createNewProject);
   const deleteProject = useProjectStore((s) => s.deleteProject);
+  const refreshProjects = useProjectStore((s) => s.refreshProjects);
+  const reloadOpenProject = useProjectStore((s) => s.reloadOpenProject);
 
   const authEmail = useAuthStore((s) => s.email);
   const signOut = useAuthStore((s) => s.signOut);
@@ -120,6 +122,20 @@ export function Toolbar({ onImport, onSettings, panel, onPanelChange, onToday }:
               </option>
             ))}
           </select>
+
+          {/*
+            * The workspace is shared, so "is this list current" is an identity question —
+            * which is why it sits in tier 1 next to the picker rather than behind `⋯`.
+            */}
+          <button
+            type="button"
+            className="ganttor-btn ganttor-btn--ghost"
+            aria-label="Refresh the project list"
+            title="Re-read the project list from the server"
+            onClick={() => void refreshProjects()}
+          >
+            Refresh
+          </button>
 
           <button
             type="button"
@@ -267,6 +283,20 @@ export function Toolbar({ onImport, onSettings, panel, onPanelChange, onToday }:
 
             <DropdownMenuLabel>Project</DropdownMenuLabel>
             <DropdownMenuItem onSelect={() => exportFile()}>Export as JSON…</DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!projectId}
+              onSelect={() => {
+                if (!projectId) return;
+                // Behind a confirm like Delete: it throws away unsaved local edits and
+                // the undo stack along with them.
+                const ok = window.confirm(
+                  'Reload “' + project.name + '” from the server? Unsaved changes will be lost.',
+                );
+                if (ok) void reloadOpenProject();
+              }}
+            >
+              Reload from server…
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onSettings()}>Settings…</DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => setTheme(theme === 'dark' ? 'light' : 'dark')}

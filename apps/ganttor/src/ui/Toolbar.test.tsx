@@ -81,6 +81,7 @@ describe('every header control is reachable', () => {
     'Baselines',
     '+ Task',
     '+ Project',
+    'Refresh the project list',
     'Editable',
     'Import Jira CSV',
   ];

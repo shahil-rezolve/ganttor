@@ -1,9 +1,11 @@
 /**
  * Authentication state.
  *
- * One account, created by hand in the Supabase dashboard — there is no sign-up path here
- * on purpose. What the app needs from auth is a session whose JWT satisfies the Row Level
- * Security policies in `supabase/schema.sql`; issuing new identities is not part of that.
+ * One account per person, created by hand in the Supabase dashboard — there is no sign-up
+ * path here on purpose. What the app needs from auth is a session whose JWT satisfies the
+ * Row Level Security policies in `supabase/schema.sql`; issuing new identities is not part
+ * of that. Those policies grant the `authenticated` role everything, so *having* an
+ * account is the whole of the authorisation model: every signed-in user is a peer.
  *
  * Two behaviours worth stating:
  *
