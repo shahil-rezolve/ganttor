@@ -42,7 +42,7 @@ export function LoginPage() {
           <span className="ganttor-login__mark">Ganttor</span>
           <h1 className="ganttor-login__title">Sign in</h1>
           <p className="ganttor-login__sub">
-            Your projects are stored in Supabase and are only visible to this account.
+            Your projects are stored in Supabase and are shared with everyone on your team.
           </p>
         </div>
 

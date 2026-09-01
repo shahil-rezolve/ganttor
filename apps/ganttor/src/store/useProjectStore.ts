@@ -12,6 +12,11 @@
  *
  * Autosave is debounced and fire-and-forget: a failed write should never interrupt
  * editing, so it reports through `notice` rather than throwing.
+ *
+ * The workspace is shared, so autosave is also *guarded*. Every write carries the
+ * `updated_at` it last read, and a write refused because the row moved sets
+ * `remoteConflict`, which halts autosave rather than clobbering a teammate. Nothing is
+ * merged — this detects and refuses; Export as JSON is the way out.
  */
 
 import { create } from 'zustand';
@@ -78,7 +83,7 @@ export interface ProjectState {
   project: Project;
   /** Row id of the open project. `null` means the next save creates a new row. */
   projectId: string | null;
-  /** Every project this account can open, most recently touched first. */
+  /** Every project in the shared workspace, most recently touched first. */
   projects: ProjectSummary[];
   /** Which store is behind the app, so the UI can say where the data went. */
   backend: 'supabase' | 'local';
@@ -89,7 +94,16 @@ export interface ProjectState {
   notice: Notice | null;
   /** True until the first read settles, so the UI can avoid a flash. */
   loading: boolean;
+  /**
+   * The server's `updated_at` for the open row — the token every guarded save carries.
+   * Never a client clock: see `saveProjectById`.
+   */
   lastSavedAt: string | null;
+  /**
+   * A save was refused because the row moved underneath us. Autosave is halted until the
+   * document is replaced; the edits stay on screen and Export as JSON is the way out.
+   */
+  remoteConflict: boolean;
 
   past: Project[];
   future: Project[];
@@ -103,6 +117,8 @@ export interface ProjectState {
   // ── Projects ──
   refreshProjects: () => Promise<void>;
   switchProject: (projectId: string) => Promise<void>;
+  /** Re-read the open project from the server, discarding unsaved local edits. */
+  reloadOpenProject: () => Promise<void>;
   createNewProject: () => void;
   deleteProject: (projectId: string) => Promise<void>;
 
@@ -164,16 +180,25 @@ let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 let writeChain: Promise<unknown> = Promise.resolve();
 /** The document waiting on the debounce, so it can be written early if needed. */
 let pendingProject: Project | null = null;
+/** Where the *open* document lives, and the concurrency token for writing to it. */
+interface OpenRef {
+  id: string | null;
+  savedAt: string | null;
+}
 /**
- * The row id the *open* document will occupy, once something has decided it.
+ * What the next save of the open document should address, once something has decided it.
  *
- * The first save of a new project is what mints its id, and until it resolves
- * `state.projectId` is still null. A second debounced write — easily reached by dragging a
- * bar right after an import — would otherwise also read null and insert a *second* row, so
- * it waits on this promise instead. Cleared whenever the open document is replaced, or the
- * next project would inherit the previous one's row.
+ * Two problems, one queue. The first save of a new project is what mints its id, and until
+ * it resolves `state.projectId` is still null — a second debounced write (easily reached by
+ * dragging a bar right after an import) would read null too and insert a *second* row. And
+ * a write is also what *moves* `updated_at`, so a save with a known id can no longer skip
+ * the queue either: it would carry the token it read before the in-flight write landed and
+ * be refused as a phantom conflict. Both wait on this promise instead.
+ *
+ * Cleared whenever the open document is replaced, or the next project would inherit the
+ * previous one's row.
  */
-let openDocumentId: Promise<string | null> | null = null;
+let openDocumentRef: Promise<OpenRef> | null = null;
 /** Assigned by the store factory; lets `flushAutosave` fire the pending write. */
 let firePendingSave: (() => void) | null = null;
 
@@ -190,7 +215,7 @@ let firePendingSave: (() => void) | null = null;
  */
 function releaseOpenDocument(): void {
   firePendingSave?.();
-  openDocumentId = null;
+  openDocumentRef = null;
 }
 
 /**
@@ -210,29 +235,70 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   // Read once, at store construction, so zoom and theme survive a reload.
   const storedPrefs = readViewPrefs();
 
+  const note = (tone: NoticeTone, message: string, highlight?: string[]): Notice => ({
+    id: ++noticeCounter,
+    tone,
+    message,
+    ...(highlight ? { highlight } : {}),
+  });
+
   /**
    * Perform the write.
    *
-   * The target row is decided **synchronously**, at the moment the save starts — not
-   * inside the promise. Reading `state.projectId` late is a race: opening another project
-   * between queueing and writing would send this document into *that* project's row.
+   * The target row *and its token* are decided **synchronously**, at the moment the save
+   * starts — not inside the promise. Reading `state.projectId` late is a race: opening
+   * another project between queueing and writing would send this document into *that*
+   * project's row. Reading `state.lastSavedAt` late is the same race one level down.
    */
   const runSave = (project: Project) => {
-    const captured = get().projectId;
-    // A known id is immune to whatever happens next. A null one means "not saved yet",
-    // and has to wait for any in-flight first save rather than minting a second row.
-    const target: Promise<string | null> =
-      captured !== null ? Promise.resolve(captured) : (openDocumentId ?? Promise.resolve(null));
+    // A spent token can only fail, once per keystroke. See `remoteConflict`.
+    if (get().remoteConflict) return;
 
-    const save = target.then((id) => saveProjectById(id, project));
-    // A failed write must not poison the next one: fall back to "no id yet", which makes
-    // the retry create the row rather than inherit a rejection.
-    openDocumentId = save.catch(() => null);
+    const captured: OpenRef = { id: get().projectId, savedAt: get().lastSavedAt };
+    // Always queue behind whatever is in flight — that write is what moves `updated_at`,
+    // so even a known id has to wait for the token its successor will need.
+    const target: Promise<OpenRef> = openDocumentRef ?? Promise.resolve(captured);
+
+    const save = target.then((ref) => saveProjectById(ref.id, project, ref.savedAt));
+    // Only a write that actually landed moves the ref. A refused or failed one did not
+    // touch `updated_at`, so the ref we started from is still live — where the old code
+    // fell back to "no id yet" and minted a duplicate row.
+    openDocumentRef = save
+      .then((outcome) =>
+        outcome.kind === 'saved' ? { id: outcome.id, savedAt: outcome.savedAt } : captured,
+      )
+      .catch(() => captured);
 
     writeChain = save
-      .then((savedId) => {
-        const known = get().projects.find((summary) => summary.id === savedId);
-        set({ projectId: savedId, lastSavedAt: new Date().toISOString() });
+      .then((outcome) => {
+        if (outcome.kind === 'conflict') {
+          set({
+            remoteConflict: true,
+            notice: note(
+              'error',
+              'Someone else saved this project while you had it open. Your last change was ' +
+                'not saved. Use ⋯ → Export as JSON to keep it, then ⋯ → Reload from server.',
+            ),
+          });
+          return undefined;
+        }
+        if (outcome.kind === 'gone') {
+          set({
+            remoteConflict: true,
+            notice: note(
+              'error',
+              'Someone else deleted this project. Your changes were not saved — use ' +
+                '⋯ → Export as JSON to keep them.',
+            ),
+          });
+          return undefined;
+        }
+
+        const known = get().projects.find((summary) => summary.id === outcome.id);
+        // The *server's* timestamp, not `new Date()`. It is the token the next save has
+        // to present, and a client clock would be rejected by the row it claims to know.
+        set({ projectId: outcome.id, lastSavedAt: outcome.savedAt });
+        writeViewPrefs({ lastProjectId: outcome.id });
 
         // Only re-list when the picker would actually change — a new row, or a rename.
         // Autosave fires on every edit, and a list query per keystroke is a round trip
@@ -243,18 +309,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           .catch(() => undefined);
       })
       .catch((error: unknown) => {
-        set({
-          notice: {
-            id: ++noticeCounter,
-            tone: 'error',
-            message: `Could not autosave: ${describe(error)}`,
-          },
-        });
+        set({ notice: note('error', `Could not autosave: ${describe(error)}`) });
       });
   };
 
   /** Queue an autosave. Debounced so a drag does not write once per frame. */
   const scheduleAutosave = (project: Project) => {
+    // Halted after a conflict: retrying with a spent token fails forever and emits a
+    // notice per keystroke, while resuming would quietly go back to last-write-wins.
+    if (get().remoteConflict) return;
     pendingProject = project;
     if (autosaveTimer) clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
@@ -297,17 +360,49 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     scheduleAutosave(next);
   };
 
-  const note = (tone: NoticeTone, message: string, highlight?: string[]): Notice => ({
-    id: ++noticeCounter,
-    tone,
-    message,
-    ...(highlight ? { highlight } : {}),
-  });
-
   /** Names a task for a message: the Jira key if it has one, else its summary. */
   const label = (taskId: string): string => {
     const task = get().project.tasks.find((t) => t.id === taskId);
     return task?.jiraKey ?? task?.name ?? taskId;
+  };
+
+  /**
+   * Install a stored project as the open document.
+   *
+   * Shared by `switchProject` and `reloadOpenProject`, which differ only in whether the id
+   * is allowed to be the one already open — `switchProject` early-returns on a match, so
+   * without this split a reload would be a no-op.
+   */
+  const openProject = async (projectId: string): Promise<void> => {
+    // A queued autosave still holds the *outgoing* project, but `runSave` reads
+    // `projectId` when it fires. Letting it survive the switch would write the old
+    // document into the newly-opened project's row. Flush before moving.
+    await flushAutosave();
+    releaseOpenDocument();
+    set({ loading: true });
+    try {
+      const stored = await loadProjectById(projectId);
+      if (!stored) {
+        set({ loading: false, notice: note('warn', 'That project could not be found.') });
+        return;
+      }
+      // Remembered per browser, so a reload reopens this rather than whichever project
+      // the team touched most recently.
+      writeViewPrefs({ lastProjectId: projectId });
+      set({
+        project: stored.project,
+        projectId,
+        lastSavedAt: stored.savedAt,
+        remoteConflict: false,
+        loading: false,
+        past: [],
+        future: [],
+        selectedTaskId: null,
+        selectedDependencyId: null,
+      });
+    } catch (error) {
+      set({ loading: false, notice: note('error', `Could not open that project: ${describe(error)}`) });
+    }
   };
 
   return {
@@ -322,17 +417,23 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     notice: null,
     loading: true,
     lastSavedAt: null,
+    remoteConflict: false,
     past: [],
     future: [],
 
     hydrate: async () => {
       releaseOpenDocument();
+      set({ remoteConflict: false });
       try {
         const projects = await listProjects();
         set({ projects });
 
-        // Most recently touched wins: it is where the last session left off.
-        const latest = projects[0];
+        // Whatever *this browser* last had open. The workspace is shared, so "most
+        // recently touched" now means whatever anyone edited last — falling back to it is
+        // right for a first visit and wrong as a default, or signing in would drop you
+        // into a colleague's project.
+        const remembered = readViewPrefs().lastProjectId;
+        const latest = projects.find((summary) => summary.id === remembered) ?? projects[0];
         if (latest) {
           const stored = await loadProjectById(latest.id);
           if (stored) {
@@ -356,8 +457,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         });
       }
       // Nothing stored yet. The demo stays on screen and the first edit saves it as a
-      // new project, so an empty account is never an empty chart.
-      set({ loading: false, projectId: null });
+      // new project, so an empty workspace is never an empty chart.
+      set({ loading: false, projectId: null, lastSavedAt: null });
     },
 
     loadProjectDocument: (project, message) => {
@@ -367,6 +468,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({
         project,
         projectId: null,
+        // The token belongs to the document being replaced. Carrying it into a new one
+        // would hand the next save a precondition from a different row entirely.
+        lastSavedAt: null,
+        remoteConflict: false,
         past: [],
         future: [],
         selectedTaskId: null,
@@ -382,6 +487,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({
         project: demo,
         projectId: null,
+        lastSavedAt: null,
+        remoteConflict: false,
         past: [],
         future: [],
         selectedTaskId: null,
@@ -392,40 +499,41 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     refreshProjects: async () => {
+      // Settle our own writes first, or a refresh landing mid-save would read an
+      // `updated_at` we are about to be told about and report it as someone else's edit.
+      await flushAutosave();
       try {
-        set({ projects: await listProjects() });
+        const projects = await listProjects();
+        set({ projects });
+
+        // The common case is not a new project appearing but the *open* one moving under
+        // you. Never auto-reload on it: that would discard local edits and reset the undo
+        // stack without being asked.
+        const { projectId, lastSavedAt, remoteConflict } = get();
+        const open = projectId ? projects.find((summary) => summary.id === projectId) : undefined;
+        if (open && lastSavedAt && open.updatedAt !== lastSavedAt && !remoteConflict) {
+          set({
+            notice: note(
+              'info',
+              'Someone else has saved changes to this project. Use ⋯ → Reload from server ' +
+                'to see them — your unsaved edits would be discarded.',
+            ),
+          });
+        }
       } catch (error) {
-        set({ notice: note('warn', `Could not list your projects: ${describe(error)}`) });
+        set({ notice: note('warn', `Could not list the projects: ${describe(error)}`) });
       }
     },
 
     switchProject: async (projectId) => {
       if (projectId === get().projectId) return;
-      // A queued autosave still holds the *outgoing* project, but `runSave` reads
-      // `projectId` when it fires. Letting it survive the switch would write the old
-      // document into the newly-opened project's row. Flush before moving.
-      await flushAutosave();
-      releaseOpenDocument();
-      set({ loading: true });
-      try {
-        const stored = await loadProjectById(projectId);
-        if (!stored) {
-          set({ loading: false, notice: note('warn', 'That project could not be found.') });
-          return;
-        }
-        set({
-          project: stored.project,
-          projectId,
-          lastSavedAt: stored.savedAt,
-          loading: false,
-          past: [],
-          future: [],
-          selectedTaskId: null,
-          selectedDependencyId: null,
-        });
-      } catch (error) {
-        set({ loading: false, notice: note('error', `Could not open that project: ${describe(error)}`) });
-      }
+      await openProject(projectId);
+    },
+
+    reloadOpenProject: async () => {
+      const projectId = get().projectId;
+      if (!projectId) return;
+      await openProject(projectId);
     },
 
     createNewProject: () => {
@@ -438,6 +546,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({
         project: blank,
         projectId: null,
+        lastSavedAt: null,
+        remoteConflict: false,
         past: [],
         future: [],
         selectedTaskId: null,

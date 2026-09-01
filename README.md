@@ -22,15 +22,22 @@ It opens on a 25-task sample project; import your own via **Import Jira CSV**.
 
 ### Supabase setup
 
-Projects are stored in Supabase behind a single login. Three steps:
+Projects live in one shared workspace: every signed-in user sees, opens, edits and deletes
+the same set of projects. Three steps:
 
 1. **Create the table.** Run [`supabase/schema.sql`](./supabase/schema.sql) in the Supabase
    SQL editor. It creates the `projects` table, its indexes, and the Row Level Security
    policies. RLS is not optional — the anon key ships in the browser bundle, so the
-   policies are the only thing standing between a stranger and your data.
-2. **Create the account.** Dashboard → Authentication → Users → *Add user*, with
-   **Auto Confirm User** ticked. There is no sign-up page in the app by design; this is the
-   one account.
+   policies are the only thing standing between a stranger and your data. They read
+   `to authenticated … using (true)`: the `anon` role now has *no* policy at all, so an
+   unauthenticated request reads nothing, and holding a session is the whole of the
+   authorisation model.
+2. **Create the accounts.** Dashboard → Authentication → Users → *Add user*, with
+   **Auto Confirm User** ticked, once per person. There is no sign-up page in the app by
+   design — and because any account is a full member of the workspace, leave email
+   sign-ups disabled in Authentication → Providers → Email, or a stranger could
+   self-register into it. Deleting a user does *not* delete their projects: `owner_id` is
+   provenance only and falls to null, because their work is the team's.
 3. **Point the app at it.** Copy `apps/ganttor/.env.example` to `apps/ganttor/.env.local`
    and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from
    Project Settings → Data API / API Keys.
@@ -162,18 +169,23 @@ cannot drift between views.
 | Resource workload view | ✅ | Per-person daily heatmap; over-capacity days flagged, worst offender first, click through to the clashing tasks |
 | Comments per task | ✅ | Free-text notes in the detail panel |
 | Update cadence | ✅ | Progress is editable inline and is not a scheduling input, so daily updates never move dates; weekly reflow is automatic |
-| Access control: view-only vs edit | ⚠️ **Partial** | Supabase Auth gates the app, and RLS scopes every row to its owner. Within the account, a view-only lock disables editing. What is still missing is *multiple* users with differing permissions — see below |
-| Real-time multi-user editing | ❌ **Not implemented** | There is now a server, but no conflict resolution — see below |
+| Access control: view-only vs edit | ⚠️ **Partial** | Supabase Auth gates the app. Past the gate every signed-in user is a peer with full read/write/delete on every project, and the view-only lock is per *document*, not per user. What is still missing is permission *levels* — see below |
+| Real-time multi-user editing | ❌ **Not implemented** | There is a server and multiple users, but no live sync and no merge. A stale write is at least detected and refused rather than silently winning — see below |
 
-**On the two unmet items.** The app is single-account by design: one user is created in the
-Supabase dashboard and there is no sign-up path. Per-user permission *levels* therefore have
-nothing to grade — they need multiple identities, a sharing model, and a role column, none of
-which exist here. The view-only lock ships as the single-user form of access control.
+**On the two unmet items.** There are multiple identities, but only one flat workspace:
+users are created by hand in the Supabase dashboard, and every one of them is a peer with
+full access to every project. Permission *levels* therefore still have nothing to grade —
+they need a sharing model and a role column, neither of which exists here. The view-only
+lock ships as the per-document form of access control, and it is a mode anyone can flip
+rather than a grant anyone holds.
 
-Real-time collaboration needs more than the backend that now exists. Two tabs editing the
-same project would both autosave the whole document, and last-write-wins would silently
-discard the other's work — so it is left unimplemented rather than half-built. Doing it
-properly means per-field or CRDT merge plus Supabase Realtime subscriptions.
+Real-time collaboration needs more than the backend that now exists. Two people editing the
+same project both autosave the *whole* document, so what is implemented is a guard rather
+than collaboration: each save carries the `updated_at` it last read, and the server refuses
+an update whose row has moved. The stale writer is told, their autosave halts, and their
+work is still on screen to export — nothing is silently discarded, but nothing is merged
+either. Doing it properly means per-field or CRDT merge plus Supabase Realtime
+subscriptions.
 
 Nothing else in the checklist is stubbed or approximated.
 
