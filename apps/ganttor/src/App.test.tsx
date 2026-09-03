@@ -88,6 +88,17 @@ async function resetApp() {
 beforeEach(resetApp);
 afterEach(resetApp);
 
+/**
+ * Take the project out of view-only.
+ *
+ * A project now opens locked, so any test that drives an *edit through the UI* has to
+ * say so first. Tests that call store actions directly do not: the lock is enforced by
+ * the controls, not by the store.
+ */
+function makeEditable(): void {
+  act(() => useProjectStore.getState().toggleLock());
+}
+
 /** Dates the engine currently produces for a task, straight from the store. */
 function datesOf(taskId: string) {
   const project = useProjectStore.getState().project;
@@ -342,6 +353,7 @@ describe('baselines', () => {
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('bar-t-calendar')).toBeTruthy());
+    makeEditable();
 
     await user.click(screen.getByRole('button', { name: 'Baselines' }));
     await user.click(screen.getByRole('button', { name: 'Save current' }));
@@ -371,18 +383,47 @@ describe('baselines', () => {
 });
 
 describe('view-only lock', () => {
-  it('disables editing without hiding anything', async () => {
-    const user = userEvent.setup();
+  /*
+   * View-only is where a project *starts*. The workspace is shared and every signed-in
+   * user has full write access, so editing is something you turn on, not something you
+   * have to remember to turn off.
+   */
+  it('opens view-only, disabling editing without hiding anything', async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
-
-    await user.click(screen.getByRole('button', { name: 'Editable' }));
 
     expect(screen.getByRole('button', { name: 'View only' })).toBeTruthy();
     expect(screen.getByTestId('bar-t-forward').dataset.locked).toBe('true');
     expect(document.querySelector('.gantt__handle')).toBeNull();
     // The chart itself is untouched — locking is about editing, not visibility.
     expect(document.querySelectorAll('[data-dependency-id]').length).toBeGreaterThan(20);
+  });
+
+  it('hands back the edit affordances once it is switched to editable', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+
+    await user.click(screen.getByRole('button', { name: 'View only' }));
+
+    expect(screen.getByRole('button', { name: 'Editable' })).toBeTruthy();
+    expect(screen.getByTestId('bar-t-forward').dataset.locked).toBeUndefined();
+    await waitFor(() => expect(document.querySelector('.gantt__handle')).toBeTruthy());
+  });
+
+  // Per document, not per browser: the lock rides along in `project.settings`.
+  it('remembers that a project was unlocked', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+
+    await user.click(screen.getByRole('button', { name: 'View only' }));
+    await act(async () => {
+      await flushAutosave();
+    });
+
+    const stored = await loadStoredProject();
+    expect(stored?.project.settings.locked).toBe(false);
   });
 });
 
@@ -448,11 +489,18 @@ function gridRow(taskId: string): HTMLElement {
   return row as HTMLElement;
 }
 
+/*
+ * Every test in here edits *through the grid*, which a view-only project does not
+ * offer — so each one switches the project to editable once the chart is on screen.
+ * (A `beforeEach` would be tidier but runs before `render`, and `hydrate()` would then
+ * install a fresh, locked demo over the top.)
+ */
 describe('editing the chart in place', () => {
   it('renames a task from its grid cell', async () => {
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    makeEditable();
 
     const field = within(gridRow('t-forward')).getByLabelText(/^Name of /);
     await user.clear(field);
@@ -474,6 +522,7 @@ describe('editing the chart in place', () => {
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    makeEditable();
 
     const before = datesOf('t-forward');
     const field = within(gridRow('t-forward')).getByLabelText(/^Duration in days of /);
@@ -494,6 +543,7 @@ describe('editing the chart in place', () => {
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    makeEditable();
 
     const before = datesOf('t-forward');
     const durationBefore = schedule(useProjectStore.getState().project).tasks.get(
@@ -519,6 +569,7 @@ describe('editing the chart in place', () => {
   it('offers no duration input on a summary row', async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    makeEditable();
 
     const summary = within(gridRow('e-engine'));
     expect(summary.queryByLabelText(/^Duration in days of /)).toBeNull();
@@ -530,6 +581,7 @@ describe('editing the chart in place', () => {
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    makeEditable();
 
     const before = useProjectStore.getState().project.tasks.length;
     await user.click(within(gridRow('t-forward')).getByLabelText(/^Add a task below /));
@@ -543,9 +595,70 @@ describe('editing the chart in place', () => {
     await waitFor(() => expect(useProjectStore.getState().project.tasks.length).toBe(before));
   });
 
+  /**
+   * Vertical order is the `project.tasks` array's order within a sibling group, so this
+   * asserts against the array rather than against the DOM — the rendered walk is derived
+   * from it, and it is the thing that gets saved.
+   */
+  it('moves a row up and down among its siblings from the row controls', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    makeEditable();
+
+    const siblings = () =>
+      useProjectStore
+        .getState()
+        .project.tasks.filter((t) => t.parentId === 'e-engine')
+        .map((t) => t.id);
+
+    const before = siblings();
+    const at = before.indexOf('t-forward');
+
+    await user.click(within(gridRow('t-forward')).getByLabelText(/^Move .* up$/));
+    await waitFor(() => expect(siblings().indexOf('t-forward')).toBe(at - 1));
+    // Its neighbour took the slot it left, and nothing else moved.
+    expect(siblings()).toEqual([
+      ...before.slice(0, at - 1),
+      't-forward',
+      before[at - 1]!,
+      ...before.slice(at + 1),
+    ]);
+
+    await user.click(within(gridRow('t-forward')).getByLabelText(/^Move .* down$/));
+    await waitFor(() => expect(siblings()).toEqual(before));
+  });
+
+  it('refuses to move the first sibling up, and says why', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    makeEditable();
+
+    const before = useProjectStore.getState().project.tasks.map((t) => t.id);
+    await user.click(within(gridRow('t-model')).getByLabelText(/^Move .* up$/));
+
+    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/first/i));
+    expect(useProjectStore.getState().project.tasks.map((t) => t.id)).toEqual(before);
+  });
+
+  it('hides the reorder controls when the project is view-only', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    makeEditable();
+    expect(within(gridRow('t-forward')).getByLabelText(/^Move .* up$/)).toBeTruthy();
+
+    act(() => useProjectStore.getState().toggleLock());
+
+    await waitFor(() =>
+      expect(within(gridRow('t-forward')).queryByLabelText(/^Move .* up$/)).toBeNull(),
+    );
+  });
+
   it('turns the cells back into plain text when the project is view-only', async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('bar-t-forward')).toBeTruthy());
+    makeEditable();
     expect(within(gridRow('t-forward')).getByLabelText(/^Name of /)).toBeTruthy();
 
     act(() => useProjectStore.getState().toggleLock());

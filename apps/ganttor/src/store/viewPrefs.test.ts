@@ -35,6 +35,27 @@ describe('defaults', () => {
   it('leaves the name column unset, so the chart can auto-fit it', () => {
     expect(readViewPrefs().nameColumnWidth).toBeNull();
   });
+
+  /*
+   * The two collapse flags default in opposite directions, so neither can be validated
+   * as "true unless stored otherwise" — each is compared against its own default.
+   */
+  it('opens with the task list showing and the detail panel put away', () => {
+    expect(readViewPrefs().gridCollapsed).toBe(false);
+    expect(readViewPrefs().panelCollapsed).toBe(true);
+  });
+
+  it('reads junk in either collapse flag as its default', () => {
+    localStorage.setItem(KEY, JSON.stringify({ gridCollapsed: 'yes', panelCollapsed: 0 }));
+    expect(readViewPrefs().gridCollapsed).toBe(false);
+    expect(readViewPrefs().panelCollapsed).toBe(true);
+  });
+
+  it('still honours a stored flag set against its default', () => {
+    writeViewPrefs({ gridCollapsed: true, panelCollapsed: false });
+    expect(readViewPrefs().gridCollapsed).toBe(true);
+    expect(readViewPrefs().panelCollapsed).toBe(false);
+  });
 });
 
 describe('surviving a reload', () => {

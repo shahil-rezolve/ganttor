@@ -585,7 +585,7 @@ body {
 }
 
 .ganttor-stat__value--ok {
-  color: var(--gantt-status-on-track);
+  color: var(--gantt-ok);
 }
 
 /* ── Dependency list ───────────────────────────────────────────────────────────── */
@@ -705,7 +705,7 @@ body {
 }
 
 .ganttor-notice[data-tone='success'] {
-  background: color-mix(in srgb, var(--gantt-status-on-track) 15%, var(--gantt-surface));
+  background: color-mix(in srgb, var(--gantt-ok) 15%, var(--gantt-surface));
 }
 
 .ganttor-notice[data-tone='info'] {
@@ -882,7 +882,7 @@ body {
 }
 
 .ganttor-load__cell[data-level='1'] {
-  background: var(--gantt-status-on-track);
+  background: var(--gantt-ok);
 }
 
 .ganttor-load__cell[data-level='2'] {

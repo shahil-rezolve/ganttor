@@ -31,6 +31,18 @@ export interface ViewPrefs {
    * falls back to that behaviour, which is still right for a first visit.
    */
   lastProjectId: string | null;
+  /** The left-hand WBS pane is hidden, giving the whole width to the bars. */
+  gridCollapsed: boolean;
+  /**
+   * The right-hand detail panel is hidden.
+   *
+   * Defaults to `true`: the panel is a *response* to picking a task, so at rest the
+   * width belongs to the bars. Clicking a task pops it open, and that reveal is
+   * deliberately never written back here — otherwise the first click any user ever made
+   * would pin the panel open forever and "hidden by default" would hold for exactly one
+   * session. Only the toolbar toggle states a preference, so only it persists.
+   */
+  panelCollapsed: boolean;
 }
 
 export const NAME_COLUMN_MIN = 160;
@@ -45,6 +57,8 @@ export const DEFAULT_VIEW_PREFS: ViewPrefs = {
   nameColumnWidth: null,
   panelWidth: PANEL_DEFAULT,
   lastProjectId: null,
+  gridCollapsed: false,
+  panelCollapsed: true,
 };
 
 export function clamp(value: number, min: number, max: number): number {
@@ -90,7 +104,21 @@ export function readViewPrefs(): ViewPrefs {
     const storedLast = record['lastProjectId'];
     const lastProjectId = typeof storedLast === 'string' && storedLast ? storedLast : null;
 
-    return { unit, theme, nameColumnWidth, panelWidth, lastProjectId };
+    // Strict comparison against the *default*, so junk — absent, a string, a stale
+    // number — reads as the state a first-time visitor should land in: the grid open,
+    // the detail panel put away.
+    const gridCollapsed = record['gridCollapsed'] === true;
+    const panelCollapsed = record['panelCollapsed'] !== false;
+
+    return {
+      unit,
+      theme,
+      nameColumnWidth,
+      panelWidth,
+      lastProjectId,
+      gridCollapsed,
+      panelCollapsed,
+    };
   } catch {
     return DEFAULT_VIEW_PREFS;
   }

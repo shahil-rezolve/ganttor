@@ -162,14 +162,14 @@ cannot drift between views.
 | Adjustable time scale | ✅ | Day / week / month / quarter |
 | Today marker | ✅ | Vertical line + flag, hidden when off-axis |
 | Baseline comparison | ✅ | Ghost bars, per-task variance, total slip, "what moved" table |
-| Documented colour scheme | ✅ | `react/palette.ts` — colour is always a function of a field (status/priority/assignee/phase), never per-task. The legend is generated from the same tables, so it can't drift from the scheme |
+| Documented colour scheme | ✅ | `react/palette.ts` — colour is always a function of a field (status/priority/assignee/phase), never per-task. The legend is generated from the same tables, so it can't drift from the scheme. On the default status dimension: **Done is green, On track blue**, At risk amber, Delayed red, Not started grey. "Finished" is the green, so a glance at the chart reads as progress rather than as activity; the generic success green used elsewhere in the app (a favourable variance, a success notice) is its own `--gantt-ok` token |
 | Readable density, 20–30 tasks | ✅ | 44px rows, 26px bars; labels too wide for their bar are placed *outside* it, never truncated. Tested at 30 concurrent tasks |
 | Drag-and-drop editing, persisted | ✅ | Move, resize either edge, drag to link. Pointer capture, day-quantised, one undo entry per gesture. Debounced autosave to Supabase |
-| Inline editing in the chart | ✅ | Name, duration, start, % and assignee are editable in the grid itself; each row adds, deletes, indents and outdents. Derived cells (a summary's numbers, every finish date) stay read-only rather than accepting an edit the scheduler must overwrite |
+| Inline editing in the chart | ✅ | Name, duration, start, % and assignee are editable in the grid itself; each row adds, deletes, indents, outdents and moves up or down among its siblings. Derived cells (a summary's numbers, every finish date) stay read-only rather than accepting an edit the scheduler must overwrite |
 | Resource workload view | ✅ | Per-person daily heatmap; over-capacity days flagged, worst offender first, click through to the clashing tasks |
 | Comments per task | ✅ | Free-text notes in the detail panel |
 | Update cadence | ✅ | Progress is editable inline and is not a scheduling input, so daily updates never move dates; weekly reflow is automatic |
-| Access control: view-only vs edit | ⚠️ **Partial** | Supabase Auth gates the app. Past the gate every signed-in user is a peer with full read/write/delete on every project, and the view-only lock is per *document*, not per user. What is still missing is permission *levels* — see below |
+| Access control: view-only vs edit | ⚠️ **Partial** | Supabase Auth gates the app. A project **opens view-only** and is switched to editable from the toolbar, which is per *document* and persists — so editing is opted into rather than the resting state. Past the gate, though, every signed-in user is a peer with full read/write/delete on every project, and the lock is per document, not per user. What is still missing is permission *levels* — see below |
 | Real-time multi-user editing | ❌ **Not implemented** | There is a server and multiple users, but no live sync and no merge. A stale write is at least detected and refused rather than silently winning — see below |
 
 **On the two unmet items.** There are multiple identities, but only one flat workspace:

@@ -389,8 +389,11 @@ describe('the bundled demo project', () => {
 });
 
 describe('view-only lock', () => {
+  // Both states are stated outright rather than leaning on `DEFAULT_SETTINGS`, which
+  // now locks: the point of this pair is the difference between them.
   const project = buildProject({ tasks: [{ id: 'A', dur: 3 }] });
   const locked: Project = { ...project, settings: { ...project.settings, locked: true } };
+  const unlocked: Project = { ...project, settings: { ...project.settings, locked: false } };
 
   it('marks bars as locked and removes the edit affordances', () => {
     const { container } = render(
@@ -403,7 +406,7 @@ describe('view-only lock', () => {
 
   it('offers those affordances when unlocked', () => {
     const { container } = render(
-      <GanttChart project={project} unit="day" today={TODAY} onChangeDates={() => {}} onCreateLink={() => {}} />,
+      <GanttChart project={unlocked} unit="day" today={TODAY} onChangeDates={() => {}} onCreateLink={() => {}} />,
     );
     expect(container.querySelectorAll('.gantt__handle')).toHaveLength(2);
     expect(screen.getByTestId('linkdot-A')).toBeTruthy();
