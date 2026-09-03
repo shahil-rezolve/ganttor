@@ -39,6 +39,7 @@ import {
   removeTask as removeTaskOp,
   schedule,
   setConstraint as setConstraintOp,
+  shiftTask as shiftTaskOp,
   saveBaseline as saveBaselineOp,
   toISO,
   todayDayNum,
@@ -141,6 +142,9 @@ export interface ProjectState {
   indentTask: (taskId: string) => void;
   outdentTask: (taskId: string) => void;
   moveTask: (taskId: string, parentId: string | null, index?: number) => void;
+  /** Reorder a task among its siblings. It never changes parent. */
+  moveTaskUp: (taskId: string) => void;
+  moveTaskDown: (taskId: string) => void;
   /** A bar was dragged or resized: pin the new dates. */
   applyDates: (taskId: string, dates: TaskDates) => void;
   clearConstraint: (taskId: string) => void;
@@ -685,6 +689,29 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         parentId,
         ...(index !== undefined ? { index } : {}),
       });
+      if (!result.ok) {
+        set({ notice: note('warn', result.reason) });
+        return;
+      }
+      commit(result.value, null);
+    },
+
+    /*
+     * A reorder is document state, not a view preference, so it goes through `commit`
+     * and gets undo and autosave for free. Contrast `toggleCollapse`, which is a WBS
+     * row's open/shut state and goes through `setView`.
+     */
+    moveTaskUp: (taskId) => {
+      const result = shiftTaskOp(get().project, taskId, -1);
+      if (!result.ok) {
+        set({ notice: note('warn', result.reason) });
+        return;
+      }
+      commit(result.value, null);
+    },
+
+    moveTaskDown: (taskId) => {
+      const result = shiftTaskOp(get().project, taskId, 1);
       if (!result.ok) {
         set({ notice: note('warn', result.reason) });
         return;

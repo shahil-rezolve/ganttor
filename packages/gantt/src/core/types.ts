@@ -128,7 +128,14 @@ export interface ProjectSettings {
   pointsToDays: number;
   showBaseline: boolean;
   showCriticalPath: boolean;
-  /** Read-only lock. The single-user stand-in for a view/edit permission level. */
+  /**
+   * Read-only lock. The single-user stand-in for a view/edit permission level.
+   *
+   * Defaults to *locked*: the workspace is shared and every signed-in user is a peer
+   * with full write access, so a project should not be editable by accident merely
+   * because someone opened it. Unlocking is one click, is per document, and persists —
+   * which makes editing a thing you opted into rather than the resting state.
+   */
   locked: boolean;
 }
 
@@ -138,7 +145,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   pointsToDays: 1,
   showBaseline: false,
   showCriticalPath: true,
-  locked: false,
+  locked: true,
 };
 
 export interface Project {

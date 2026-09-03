@@ -153,7 +153,7 @@ export function BaselinePanel({ view }: BaselinePanelProps) {
                                 color:
                                   (variance?.endDelta ?? 0) > 0
                                     ? 'var(--gantt-critical)'
-                                    : 'var(--gantt-status-on-track)',
+                                    : 'var(--gantt-ok)',
                               }}
                             >
                               {signed(variance?.endDelta ?? 0)}d

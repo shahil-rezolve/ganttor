@@ -92,6 +92,8 @@ function Workspace() {
   const addTask = useProjectStore((s) => s.addTask);
   const indentTask = useProjectStore((s) => s.indentTask);
   const outdentTask = useProjectStore((s) => s.outdentTask);
+  const moveTaskUp = useProjectStore((s) => s.moveTaskUp);
+  const moveTaskDown = useProjectStore((s) => s.moveTaskDown);
 
   const [panel, setPanel] = useState<Panel>('task');
   const [importOpen, setImportOpen] = useState(false);
@@ -108,11 +110,27 @@ function Workspace() {
     () => readViewPrefs().nameColumnWidth,
   );
   const [panelWidth, setPanelWidth] = useState<number>(() => readViewPrefs().panelWidth);
+  const [gridCollapsed, setGridCollapsed] = useState(() => readViewPrefs().gridCollapsed);
+  const [panelCollapsed, setPanelCollapsed] = useState(() => readViewPrefs().panelCollapsed);
   const [todayToken, setTodayToken] = useState(0);
 
   const handleNameColumnWidthChange = useCallback((px: number) => {
     setNameColumnWidth(px);
     writeViewPrefs({ nameColumnWidth: px });
+  }, []);
+
+  const toggleGrid = useCallback(() => {
+    setGridCollapsed((collapsed) => {
+      writeViewPrefs({ gridCollapsed: !collapsed });
+      return !collapsed;
+    });
+  }, []);
+
+  const togglePanel = useCallback(() => {
+    setPanelCollapsed((collapsed) => {
+      writeViewPrefs({ panelCollapsed: !collapsed });
+      return !collapsed;
+    });
   }, []);
 
   const showToday = useCallback(() => setTodayToken((token) => token + 1), []);
@@ -197,10 +215,40 @@ function Workspace() {
     };
   }, [refreshProjects]);
 
-  // Selecting a task should show its details, or the panel choice feels ignored.
+  /*
+   * Selecting a task shows its details. The panel is hidden at rest, so this is what
+   * makes it a pop-up rather than a pane you have to go and open yourself.
+   *
+   * The expansion is *not* written to `viewPrefs`: it is a reveal, not a stated
+   * preference, and persisting it would defeat the hidden-by-default resting state
+   * after a single click. Only the toolbar toggle writes.
+   *
+   * `handleSelectTask` below does the same thing on the click itself, which this effect
+   * cannot see: re-clicking the already-selected task leaves `selectedTaskId` unchanged.
+   * This effect covers selections that arrive from elsewhere — the workload panel's
+   * click-through, the dependency list, a cycle notice.
+   */
   useEffect(() => {
-    if (selectedTaskId) setPanel('task');
+    if (!selectedTaskId) return;
+    setPanel('task');
+    setPanelCollapsed(false);
   }, [selectedTaskId]);
+
+  /* Picking *which* panel implies wanting to see it, so the segmented control in the
+   * toolbar expands a collapsed panel rather than switching something invisible. */
+  const handlePanelChange = useCallback((next: Panel) => {
+    setPanel(next);
+    setPanelCollapsed(false);
+  }, []);
+
+  const handleSelectTask = useCallback(
+    (taskId: string) => {
+      selectTask(taskId);
+      setPanel('task');
+      setPanelCollapsed(false);
+    },
+    [selectTask],
+  );
 
   const handleView = useCallback((next: GanttView) => setView(next), []);
 
@@ -247,9 +295,15 @@ function Workspace() {
           return;
         case 'outdent':
           outdentTask(taskId);
+          return;
+        case 'move-up':
+          moveTaskUp(taskId);
+          return;
+        case 'move-down':
+          moveTaskDown(taskId);
       }
     },
-    [addTask, removeTask, indentTask, outdentTask],
+    [addTask, removeTask, indentTask, outdentTask, moveTaskUp, moveTaskDown],
   );
 
   useEffect(() => {
@@ -288,8 +342,12 @@ function Workspace() {
         onImport={() => setImportOpen(true)}
         onSettings={() => setSettingsOpen(true)}
         panel={panel}
-        onPanelChange={setPanel}
+        onPanelChange={handlePanelChange}
         onToday={showToday}
+        gridCollapsed={gridCollapsed}
+        onToggleGrid={toggleGrid}
+        panelCollapsed={panelCollapsed}
+        onTogglePanel={togglePanel}
       />
 
       {notice && (
@@ -325,11 +383,12 @@ function Workspace() {
               theme={theme}
               growAxis
               scrollToTodayToken={todayToken}
+              gridCollapsed={gridCollapsed}
               {...(nameColumnWidth !== null ? { nameColumnWidth } : {})}
               onNameColumnWidthChange={handleNameColumnWidthChange}
               selectedTaskId={selectedTaskId}
               selectedDependencyId={selectedDependencyId}
-              onSelectTask={selectTask}
+              onSelectTask={handleSelectTask}
               onSelectDependency={selectDependency}
               onToggleCollapse={toggleCollapse}
               onChangeDates={applyDates}
@@ -341,30 +400,39 @@ function Workspace() {
           )}
         </div>
 
-        <div
-          className="ganttor-split"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize the detail panel"
-          aria-valuenow={Math.round(panelWidth)}
-          tabIndex={0}
-          data-dragging={panelDragging || undefined}
-          onPointerDown={onPanelSplitDown}
-          onPointerMove={onPanelSplitMove}
-          onPointerUp={onPanelSplitUp}
-          onPointerCancel={onPanelSplitUp}
-          onKeyDown={onPanelSplitKeyDown}
-        />
-
         {/*
-         * The width lives on a wrapper so `.ganttor-panel` stays the element that holds
-         * the panel's content — two tests reach for it by class name.
+         * Collapsed, neither the splitter nor the host renders, so `.ganttor-chart`
+         * takes the whole row. Note `panel` itself is untouched: which panel *would*
+         * show is remembered, and selecting a task still sets it without re-expanding.
          */}
-        <div className="ganttor-panelhost" style={{ width: panelWidth }}>
-          {panel === 'task' && <TaskPanel view={view} />}
-          {panel === 'workload' && <WorkloadPanel view={view} />}
-          {panel === 'baselines' && <BaselinePanel view={view} />}
-        </div>
+        {!panelCollapsed && (
+          <>
+            <div
+              className="ganttor-split"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize the detail panel"
+              aria-valuenow={Math.round(panelWidth)}
+              tabIndex={0}
+              data-dragging={panelDragging || undefined}
+              onPointerDown={onPanelSplitDown}
+              onPointerMove={onPanelSplitMove}
+              onPointerUp={onPanelSplitUp}
+              onPointerCancel={onPanelSplitUp}
+              onKeyDown={onPanelSplitKeyDown}
+            />
+
+            {/*
+             * The width lives on a wrapper so `.ganttor-panel` stays the element that
+             * holds the panel's content — two tests reach for it by class name.
+             */}
+            <div className="ganttor-panelhost" style={{ width: panelWidth }}>
+              {panel === 'task' && <TaskPanel view={view} />}
+              {panel === 'workload' && <WorkloadPanel view={view} />}
+              {panel === 'baselines' && <BaselinePanel view={view} />}
+            </div>
+          </>
+        )}
       </div>
 
       {view && (

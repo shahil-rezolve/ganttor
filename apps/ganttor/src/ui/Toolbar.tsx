@@ -45,9 +45,25 @@ export interface ToolbarProps {
   onPanelChange: (panel: 'task' | 'workload' | 'baselines') => void;
   /** Scroll the chart back to today. Needed once the axis grows without bound. */
   onToday: () => void;
+  /** The left-hand WBS pane is hidden. */
+  gridCollapsed: boolean;
+  onToggleGrid: () => void;
+  /** The right-hand detail panel is hidden. */
+  panelCollapsed: boolean;
+  onTogglePanel: () => void;
 }
 
-export function Toolbar({ onImport, onSettings, panel, onPanelChange, onToday }: ToolbarProps) {
+export function Toolbar({
+  onImport,
+  onSettings,
+  panel,
+  onPanelChange,
+  onToday,
+  gridCollapsed,
+  onToggleGrid,
+  panelCollapsed,
+  onTogglePanel,
+}: ToolbarProps) {
   const project = useProjectStore((s) => s.project);
   const unit = useProjectStore((s) => s.unit);
   const theme = useProjectStore((s) => s.theme);
@@ -218,6 +234,31 @@ export function Toolbar({ onImport, onSettings, panel, onPanelChange, onToday }:
         </button>
 
         <span className="ganttor-bar__spacer" />
+
+        {/*
+         * Two independent width reclaimers, both `aria-pressed` natives like the
+         * segmented controls above. Pressed means *collapsed*: the button reads as "the
+         * pane is currently put away".
+         */}
+        <button
+          type="button"
+          className="ganttor-btn"
+          aria-pressed={gridCollapsed}
+          onClick={onToggleGrid}
+          title={gridCollapsed ? 'Show the task list' : 'Hide the task list'}
+        >
+          {gridCollapsed ? '⇥' : '⇤'} List
+        </button>
+
+        <button
+          type="button"
+          className="ganttor-btn"
+          aria-pressed={panelCollapsed}
+          onClick={onTogglePanel}
+          title={panelCollapsed ? 'Show the detail panel' : 'Hide the detail panel'}
+        >
+          Panel {panelCollapsed ? '⇤' : '⇥'}
+        </button>
 
         <div className="ganttor-seg" role="group" aria-label="Side panel">
           {(['task', 'workload', 'baselines'] as const).map((value) => (

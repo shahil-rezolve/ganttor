@@ -41,7 +41,13 @@ export type TaskGridEdit =
   | { field: 'percentComplete'; value: number }
   | { field: 'assignee'; value: string | null };
 
-export type TaskGridAction = 'add' | 'delete' | 'indent' | 'outdent';
+export type TaskGridAction =
+  | 'add'
+  | 'delete'
+  | 'indent'
+  | 'outdent'
+  | 'move-up'
+  | 'move-down';
 
 export interface TaskGridProps {
   rows: readonly GanttRow[];
@@ -228,6 +234,30 @@ export const TaskGrid = memo(function TaskGrid({
 
                 {canEdit && onRowAction && (
                   <span className="gantt__rowtools">
+                    <button
+                      type="button"
+                      className="gantt__rowtool"
+                      title="Move up among its siblings"
+                      aria-label={`Move ${task.name} up`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRowAction(task.id, 'move-up');
+                      }}
+                    >
+                      ▲
+                    </button>
+                    <button
+                      type="button"
+                      className="gantt__rowtool"
+                      title="Move down among its siblings"
+                      aria-label={`Move ${task.name} down`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRowAction(task.id, 'move-down');
+                      }}
+                    >
+                      ▼
+                    </button>
                     <button
                       type="button"
                       className="gantt__rowtool"

@@ -82,7 +82,7 @@ describe('every header control is reachable', () => {
     '+ Task',
     '+ Project',
     'Refresh the project list',
-    'Editable',
+    'View only',
     'Import Jira CSV',
   ];
 
@@ -118,12 +118,13 @@ describe('every header control is reachable', () => {
     }
   });
 
+  // A project opens view-only, so this button is how editing gets turned on at all.
   it('keeps the lock on the bar rather than in the menu, since it is a mode', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: 'Editable' }));
-    expect(screen.getByRole('button', { name: 'View only' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'View only' }));
+    expect(screen.getByRole('button', { name: 'Editable' })).toBeTruthy();
   });
 });
 
@@ -179,8 +180,15 @@ describe('the theme toggle', () => {
 });
 
 describe('the splitters', () => {
-  it('exposes both as labelled separators a keyboard can reach', () => {
+  /** Reveal the detail panel, which is hidden at rest, so its splitter exists. */
+  async function showPanel(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: /^Panel/ }));
+  }
+
+  it('exposes both as labelled separators a keyboard can reach', async () => {
+    const user = userEvent.setup();
     render(<App />);
+    await showPanel(user);
 
     const nameSplit = screen.getByRole('separator', { name: 'Resize the task name column' });
     const panelSplit = screen.getByRole('separator', { name: 'Resize the detail panel' });
@@ -213,6 +221,7 @@ describe('the splitters', () => {
   it('narrows the detail panel with the arrow keys and persists the result', async () => {
     const user = userEvent.setup();
     render(<App />);
+    await showPanel(user);
 
     const splitter = screen.getByRole('separator', { name: 'Resize the detail panel' });
     const before = Number(splitter.getAttribute('aria-valuenow'));
@@ -228,6 +237,86 @@ describe('the splitters', () => {
     );
     expect(after).toBeLessThan(before);
     expect(readViewPrefs().panelWidth).toBe(after);
+  });
+
+  /* The task list defaults to *expanded*: it is the outline, not a detail view. */
+  it('collapses the task list and remembers it', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const button = screen.getByRole('button', { name: /List$/ });
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('.gantt__layout[data-grid-collapsed]')).toBeNull();
+
+    await user.click(button);
+
+    expect(
+      screen.getByRole('button', { name: /List$/ }).getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(document.querySelector('.gantt__layout[data-grid-collapsed]')).toBeTruthy();
+    expect(readViewPrefs().gridCollapsed).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: /List$/ }));
+    expect(document.querySelector('.gantt__layout[data-grid-collapsed]')).toBeNull();
+    expect(readViewPrefs().gridCollapsed).toBe(false);
+  });
+
+  /*
+   * The detail panel defaults to *hidden* — it answers "tell me about this task", so at
+   * rest the width belongs to the bars.
+   */
+  it('starts with the detail panel hidden and opens it from the toolbar', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const button = screen.getByRole('button', { name: /^Panel/ });
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('.ganttor-panel')).toBeNull();
+    // The resize handle goes with it, or it would be a separator against nothing.
+    expect(screen.queryByRole('separator', { name: 'Resize the detail panel' })).toBeNull();
+
+    await user.click(button);
+
+    expect(
+      screen.getByRole('button', { name: /^Panel/ }).getAttribute('aria-pressed'),
+    ).toBe('false');
+    expect(document.querySelector('.ganttor-panel')).toBeTruthy();
+    expect(readViewPrefs().panelCollapsed).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: /^Panel/ }));
+    expect(document.querySelector('.ganttor-panel')).toBeNull();
+    expect(readViewPrefs().panelCollapsed).toBe(true);
+  });
+
+  it('pops the detail panel open when a task is selected', async () => {
+    render(<App />);
+    expect(document.querySelector('.ganttor-panel')).toBeNull();
+
+    act(() => useProjectStore.getState().selectTask('t-forward'));
+
+    expect(document.querySelector('.ganttor-panel')).toBeTruthy();
+  });
+
+  /*
+   * The reveal is not a stated preference. Persisting it would mean the first task
+   * anyone ever clicked pinned the panel open for good, and "hidden by default" would
+   * hold for exactly one session.
+   */
+  it('does not persist the pop-up, so the panel is hidden again next visit', async () => {
+    render(<App />);
+    act(() => useProjectStore.getState().selectTask('t-forward'));
+
+    expect(document.querySelector('.ganttor-panel')).toBeTruthy();
+    expect(readViewPrefs().panelCollapsed).toBe(true);
+  });
+
+  it('opens the panel when a different view is picked from the segmented control', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    expect(document.querySelector('.ganttor-panel')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Workload' }));
+    expect(document.querySelector('.ganttor-panel')).toBeTruthy();
   });
 
   it('clamps the name column instead of letting it collapse', async () => {

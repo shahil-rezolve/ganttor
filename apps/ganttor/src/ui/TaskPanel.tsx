@@ -34,6 +34,8 @@ export function TaskPanel({ view }: TaskPanelProps) {
   const removeTask = useProjectStore((s) => s.removeTask);
   const indentTask = useProjectStore((s) => s.indentTask);
   const outdentTask = useProjectStore((s) => s.outdentTask);
+  const moveTaskUp = useProjectStore((s) => s.moveTaskUp);
+  const moveTaskDown = useProjectStore((s) => s.moveTaskDown);
   const clearConstraint = useProjectStore((s) => s.clearConstraint);
   const updateLink = useProjectStore((s) => s.updateLink);
   const removeLink = useProjectStore((s) => s.removeLink);
@@ -332,6 +334,22 @@ export function TaskPanel({ view }: TaskPanelProps) {
               disabled={locked}
             >
               Indent ⇥
+            </button>
+            <button
+              type="button"
+              className="ganttor-btn"
+              onClick={() => moveTaskUp(task.id)}
+              disabled={locked}
+            >
+              ↑ Move up
+            </button>
+            <button
+              type="button"
+              className="ganttor-btn"
+              onClick={() => moveTaskDown(task.id)}
+              disabled={locked}
+            >
+              ↓ Move down
             </button>
           </div>
         </div>

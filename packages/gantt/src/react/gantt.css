@@ -37,10 +37,20 @@
 
   /* ── Status. The default colour dimension. ──────────────────────────────────── */
   --gantt-status-not-started: #6b7686;
-  --gantt-status-on-track: #3fb589;
+  --gantt-status-on-track: #4a7fd4;
   --gantt-status-at-risk: #e0a33c;
   --gantt-status-delayed: #e0574f;
-  --gantt-status-done: #4a7fd4;
+  --gantt-status-done: #3fb589;
+
+  /*
+   * Generic "success / on schedule" green, for anything that is *not* a status swatch:
+   * a favourable variance, an OK stat, a success notice, a light workload cell.
+   *
+   * It exists because those four call sites used to borrow `--gantt-status-on-track`,
+   * which now means "in progress, blue". Without its own token, making Done green would
+   * have quietly turned every "ahead of schedule" reading blue.
+   */
+  --gantt-ok: #3fb589;
 
   /* ── Priority ───────────────────────────────────────────────────────────────── */
   --gantt-priority-highest: #e0574f;
@@ -125,10 +135,12 @@
     --gantt-focus: #2f6bdb;
 
     --gantt-status-not-started: #8b95a4;
-    --gantt-status-on-track: #1d9268;
+    --gantt-status-on-track: #2f6bdb;
     --gantt-status-at-risk: #b47a12;
     --gantt-status-delayed: #cc3f36;
-    --gantt-status-done: #2f6bdb;
+    --gantt-status-done: #1d9268;
+
+    --gantt-ok: #1d9268;
 
     --gantt-priority-highest: #cc3f36;
     --gantt-priority-high: #c26a19;
@@ -176,10 +188,12 @@
   --gantt-focus: #2f6bdb;
 
   --gantt-status-not-started: #8b95a4;
-  --gantt-status-on-track: #1d9268;
+  --gantt-status-on-track: #2f6bdb;
   --gantt-status-at-risk: #b47a12;
   --gantt-status-delayed: #cc3f36;
-  --gantt-status-done: #2f6bdb;
+  --gantt-status-done: #1d9268;
+
+  --gantt-ok: #1d9268;
 
   --gantt-priority-highest: #cc3f36;
   --gantt-priority-high: #c26a19;
@@ -231,6 +245,15 @@
   grid-template-columns: max-content 1fr;
   align-items: start;
   min-width: min-content;
+}
+
+/*
+ * Collapsing the grid needs no other change: the `max-content` track goes to zero and
+ * the `1fr` timeline takes the width. The column splitter lives inside `.gantt__grid`,
+ * so it hides with it.
+ */
+.gantt__layout[data-grid-collapsed] .gantt__grid {
+  display: none;
 }
 
 /* ── Left pane: the WBS grid ───────────────────────────────────────────────────── */
@@ -835,7 +858,6 @@
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 1px;
   padding: 2px;
   border: 1px solid var(--gantt-hairline-strong);
   border-radius: 7px;
@@ -861,8 +883,14 @@
   pointer-events: none;
 }
 
+/*
+ * 18px, not 20px, and no gap between them. Six tools overlay the tail of the name at
+ * 110px; at the four this pill used to hold, 20px and a 1px gap came to 89px. The extra
+ * two controls therefore cost ~21px of overlay rather than ~42px, which keeps the pill
+ * inside a name column dragged all the way down to `NAME_COLUMN_MIN` (160px).
+ */
 .gantt__rowtool {
-  width: 20px;
+  width: 18px;
   height: 20px;
   padding: 0;
   display: grid;

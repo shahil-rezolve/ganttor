@@ -75,6 +75,16 @@ export interface GanttChartProps {
   /** The splitter was dragged. Persist this to keep the width across reloads. */
   onNameColumnWidthChange?: (px: number) => void;
   /**
+   * Hide the left-hand WBS pane so the bars get the whole width.
+   *
+   * The grid is hidden with CSS rather than unmounted, deliberately. The measurement
+   * effect observes `gridRef` once, with `[]` deps; unmounting the grid would orphan
+   * that observer, and it would never re-attach to the remount. `display: none` also
+   * makes `offsetWidth` read 0, which is already the right value for every width sum
+   * below — no collapsed-state arithmetic anywhere.
+   */
+  gridCollapsed?: boolean;
+  /**
    * Extend the axis as the view approaches either end, instead of spanning only the
    * project's own dates plus a week.
    *
@@ -115,6 +125,7 @@ export function GanttChart({
   metrics,
   nameColumnWidth,
   onNameColumnWidthChange,
+  gridCollapsed = false,
   growAxis = false,
   scrollToTodayToken = 0,
   onSelectTask,
@@ -273,7 +284,10 @@ export function GanttChart({
       element.removeEventListener('scroll', measure);
       observer.disconnect();
     };
-  }, []);
+    // Re-run on a collapse toggle so the measurement refreshes on that frame rather
+    // than waiting for the next scroll or resize. Re-binding the listener and observer
+    // is cheap, and it keeps the effect honest about what it depends on.
+  }, [gridCollapsed]);
 
   // Keyed on the origin: it changes exactly when leftward growth shifted the content.
   useLayoutEffect(() => {
@@ -440,7 +454,7 @@ export function GanttChart({
   return (
     <div className="gantt" data-gantt-theme={theme}>
       <div className="gantt__scroll" ref={scrollRef}>
-        <div className="gantt__layout">
+        <div className="gantt__layout" data-grid-collapsed={gridCollapsed || undefined}>
           <TaskGrid
             rows={rows}
             gridRef={gridRef}

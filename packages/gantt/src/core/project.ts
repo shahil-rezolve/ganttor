@@ -190,6 +190,30 @@ export function outdentTask(project: Project, id: string): MutationResult<Projec
   });
 }
 
+/**
+ * Move a task one slot up or down among its siblings. Order is the array's order.
+ *
+ * A row never leaves its parent: this is the vertical counterpart to indent/outdent,
+ * not a re-parenting op. `moveTask`'s `index` is a sibling index over the list with the
+ * task already removed, so `at + delta` is correct in both directions — removing the
+ * task shifts its trailing siblings down by one, which is exactly what a downward move
+ * wants.
+ *
+ * A summary task carries its subtree for free: `buildWbs` walks depth-first, so a
+ * subtree is always contiguous in `project.tasks`.
+ */
+export function shiftTask(project: Project, id: string, delta: -1 | 1): MutationResult<Project> {
+  const wbs = buildWbs(project.tasks);
+  const parentId = wbs.parentOf.get(id) ?? null;
+  const siblings = parentId === null ? wbs.roots : (wbs.childrenOf.get(parentId) ?? []);
+  const at = siblings.indexOf(id);
+  if (at < 0) return { ok: false, reason: `No task ${id}.` };
+  const next = at + delta;
+  if (next < 0) return { ok: false, reason: 'Already first among its siblings.' };
+  if (next >= siblings.length) return { ok: false, reason: 'Already last among its siblings.' };
+  return moveTask(project, id, { parentId, index: next });
+}
+
 export interface NewDependency {
   id: string;
   predecessorId: string;
